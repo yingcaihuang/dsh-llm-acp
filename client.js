@@ -23,6 +23,15 @@ window.__ModuleLoader__.load({
       render() { return this.state.failed ? null : h(CallRender, { render: this.props.render }) }
     }
 
+    // ── UI language: follows DSH's active locale; the Chinese text is the dictionary key ──
+    // tr('中文') gives the English text when DSH runs in English and EN has it, otherwise the Chinese text
+    // itself, so an untranslated string never shows blank or as a key. zhEn(zh, en) for texts with values.
+    const langStore = createStore('zh')
+    const isEn = () => langStore.get() === 'en'
+    const zhEn = (zhText, enText) => (isEn() ? enText : zhText)
+    const EN = Object.freeze({"ACP 洞察": "ACP insights", "ACP 控制台": "ACP console", "全部会话的 ACP CLI 状态、模型与 Token 用量；点图表 / 会话行可交叉筛选，↗ 直接打开对应会话。": "ACP CLI status, models and token usage across all sessions; click a chart or session row to cross-filter, ↗ opens that session.", "今日": "Today", "7 天": "7 days", "30 天": "30 days", "全部": "All", "自定义起止日期": "Custom start and end dates", "紧凑": "Compact", "紧凑模式：更小的间距与字号": "Compact mode: tighter spacing and smaller text", "与上一个等长周期对比（KPI 环比 + 趋势图灰色虚线）": "Compare with the previous period of the same length (KPI deltas + grey dashed trend line)", "生成当前范围的 Markdown 用量报告": "Generate a Markdown usage report for the current range", "刷新": "Refresh", "刷新中…": "Refreshing…", "导出 CSV": "Export CSV", "导出全部": "Export all", "导出当前范围 + 当前筛选的明细": "Export per-turn rows for the current range and filter", "导出当前范围的明细": "Export per-turn rows for the current range", "重新运行各 CLI 的用量探测命令": "Re-run each CLI's usage probe", "探测中…": "Probing…", "读取中…": "Loading…", "正在读取…": "Loading…", "轮次": "Turns", "模型": "Model", "提供方": "Provider", "会话": "Session", "成功率": "Success rate", "平均耗时": "Avg latency", "失败": "Failed", "成功": "Success", "超时": "Timeout", "输入": "Input", "输出": "Output", "输入 Token": "Input tokens", "输出 Token": "Output tokens", "最近": "Recent", "耗时": "Latency", "结果": "Result", "权限": "Permission", "时间": "Time", "新增": "New", "有失败": "Has failures", "持平": "Flat", "按模型": "By model", "提供方占比": "Provider share", "每日 Token 趋势": "Daily token trend", "所选范围内还没有调用记录": "No calls in the selected range yet", "点击让全页只看这个模型": "Click to filter the whole page to this model", "每轮新进程": "New process per turn", "命令行 --model": "Command line --model", "把当前图表存为 SVG 文件": "Save this chart as SVG", "把当前图表存为 PNG 图片（2 倍清晰度）": "Save this chart as PNG (2x)", "宿主还是旧版本：重启一次 DSH 后可用": "The host is outdated: restart DSH once to use this", "限流": "Rate limit", "额度": "Quota", "认证": "Auth", "服务端": "Server", "传输": "Transport", "其他": "Other", "采用建议": "Apply suggestion", "编辑配置": "Edit config", "收起": "Collapse", "只看此会话": "Only this session", "取消": "Cancel", "删除": "Delete", "关闭 Esc": "Close Esc", "全部启用": "Enable all", "全部停用（保留默认）": "Disable all (keep default)", "停用 ≥1x 高倍率": "Disable ≥1x high-rate", "已是最新": "Up to date", "线上版本查询失败": "Version check failed", "更新内容": "What's new", "稍后提醒": "Remind later", "跳过此版本": "Skip this version", "说明": "Notes", "稍后": "Later", "跳过": "Skip", "知道了": "Got it", "去升级": "Update", "怎么升级": "How to update", "重新更新": "Update again", "不再提示": "Don't show again", "刷新页面": "Reload page", "24 小时内不再显示动效提醒": "Hide the animated reminder for 24 hours", "这个版本没有附带更新说明": "This version has no release notes"})
+    const tr = (text) => (isEn() && Object.prototype.hasOwnProperty.call(EN, text) ? EN[text] : text)
+
     // ── version badge: this copy's version vs the newest on npm, with an animated update reminder ──
     const PKG_NAME = 'dsh-llm-acp'
     const LATEST_POLL_MS = 30 * 60_000
@@ -86,12 +95,13 @@ window.__ModuleLoader__.load({
     const quietFor = (st, v) => st.skip === v || (st.snooze?.v === v && Date.now() < Number(st.snooze.until))
     const NotesList = ({ notes }) => (Array.isArray(notes) && notes.length
       ? h('ul', { className: 'acp-notes' }, notes.map((n, i) => h('li', { key: i }, n)))
-      : h('div', { className: 'acp-notes none' }, '这个版本没有附带更新说明'))
+      : h('div', { className: 'acp-notes none' }, tr('这个版本没有附带更新说明')))
     function VersionBadge({ small = false }) {
       const [info, setInfo] = useState(null)
       const [checking, setChecking] = useState(false)
       const [panel, setPanel] = useState('') // '' | 'notes' | 'help'
       useStore(verStore)
+      useStore(langStore)
       const st = verStore.get()
       const lastCheck = useRef(0)
       const check = useCallback(async (force) => {
@@ -152,33 +162,33 @@ window.__ModuleLoader__.load({
             h('button', { type: 'button', className: `acp-upd${dev ? ' dev' : ''}`, onClick: onUpgrade, title: dev ? `线上已有 v${latest}；当前是 link: 开发安装，没有更新按钮` : `线上已有 v${latest}，点击打开插件详情页，点右上角「更新到 ${latest}」` },
               h('span', { className: 'ring', 'aria-hidden': true }),
               h('span', { className: 'dot', 'aria-hidden': true }),
-              small ? `新版本 v${latest}` : `发现新版本 v${latest} · ${dev ? '开发安装' : '去升级'}`,
+              small ? zhEn(`新版本 v${latest}`, `New v${latest}`) : zhEn(`发现新版本 v${latest} · ${dev ? '开发安装' : '去升级'}`, `v${latest} available · ${dev ? 'dev install' : 'Update'}`),
               h('span', { className: 'arr', 'aria-hidden': true }, '→')),
             h('span', { className: 'acp-upd-acts' },
-              h('button', { type: 'button', onClick: () => toggle('notes'), 'aria-expanded': panel === 'notes' }, small ? '说明' : '更新内容'),
-              h('button', { type: 'button', onClick: later, title: '24 小时内不再显示动效提醒' }, small ? '稍后' : '稍后提醒'),
-              h('button', { type: 'button', onClick: skip, title: `不再提醒 v${latest}，出下一个版本时再提醒` }, small ? '跳过' : '跳过此版本')))
+              h('button', { type: 'button', onClick: () => toggle('notes'), 'aria-expanded': panel === 'notes' }, small ? tr('说明') : tr('更新内容')),
+              h('button', { type: 'button', onClick: later, title: tr('24 小时内不再显示动效提醒') }, small ? tr('稍后') : tr('稍后提醒')),
+              h('button', { type: 'button', onClick: skip, title: `不再提醒 v${latest}，出下一个版本时再提醒` }, small ? tr('跳过') : tr('跳过此版本'))))
           : newer
-            ? h('button', { type: 'button', className: 'acp-upd-quiet', title: quietTitle, onClick: onUpgrade }, `v${latest} 可更新`)
+            ? h('button', { type: 'button', className: 'acp-upd-quiet', title: quietTitle, onClick: onUpgrade }, zhEn(`v${latest} 可更新`, `v${latest} available`))
             : syncing
-              ? h('span', { className: 'acp-upd-sync', title: syncTitle, role: 'status' }, h('i', { className: 'spin', 'aria-hidden': true }), `v${info.newest} 镜像同步中`)
+              ? h('span', { className: 'acp-upd-sync', title: syncTitle, role: 'status' }, h('i', { className: 'spin', 'aria-hidden': true }), zhEn(`v${info.newest} 镜像同步中`, `v${info.newest} syncing to mirror`))
             : latest
-              ? h('span', { className: 'acp-ver-ok', title: `已是最新版本${checkedTitle}` }, '已是最新')
+              ? h('span', { className: 'acp-ver-ok', title: `已是最新版本${checkedTitle}` }, tr('已是最新'))
               : info?.error
-                ? h('button', { type: 'button', className: 'acp-ver-err', title: `线上版本查询失败：${info.error}\n点击重试`, onClick: () => check(true) }, '线上版本查询失败')
+                ? h('button', { type: 'button', className: 'acp-ver-err', title: `线上版本查询失败：${info.error}\n点击重试`, onClick: () => check(true) }, tr('线上版本查询失败'))
                 : null,
         panel === 'notes' && newer ? h('div', { className: 'acp-upd-help', role: 'status' },
-          h('div', { className: 'ttl' }, `v${latest} 更新内容`),
+          h('div', { className: 'ttl' }, zhEn(`v${latest} 更新内容`, `What's new in v${latest}`)),
           h(NotesList, { notes: info?.notes }),
-          h('button', { type: 'button', className: 'acp-link', onClick: onUpgrade }, dev ? '怎么升级' : '去升级'),
-          h('button', { type: 'button', className: 'acp-link', onClick: () => setPanel('') }, '收起')) : null,
+          h('button', { type: 'button', className: 'acp-link', onClick: onUpgrade }, dev ? tr('怎么升级') : tr('去升级')),
+          h('button', { type: 'button', className: 'acp-link', onClick: () => setPanel('') }, tr('收起'))) : null,
         panel === 'help' && newer ? h('div', { className: 'acp-upd-help', role: 'status' },
           dev
             ? '当前是 link: 本地开发安装，插件页不会出现更新按钮。在插件目录执行 git pull，再到插件页把开关关掉再打开（或 ⌘Q 重启 DSH）。'
             : `请到 设置 → 插件 → 已安装 → ACP CLI 模型，点右上角「更新到 ${latest}」。更新后按 ⌘Q 完全退出 DSH 再打开，并在本页 ⌘⇧R 强制刷新。`,
-          h('button', { type: 'button', className: 'acp-link', onClick: () => setPanel('') }, '知道了')) : null,
+          h('button', { type: 'button', className: 'acp-link', onClick: () => setPanel('') }, tr('知道了'))) : null,
         pend ? h('div', { className: 'acp-upd-fail', role: 'status' },
-          h('div', { className: 'ttl' }, `上次更新到 v${pend.to} 好像没有生效，当前仍是 v${CLIENT_VERSION}`),
+          h('div', { className: 'ttl' }, zhEn(`上次更新到 v${pend.to} 好像没有生效，当前仍是 v${CLIENT_VERSION}`, `The update to v${pend.to} did not take effect; still running v${CLIENT_VERSION}`)),
           h('ul', { className: 'acp-notes' },
             hostHas
               ? h('li', null, `服务端已经是 v${info.current}，说明已经装好，只是页面还在用旧代码：按 ⌘Q 完全退出 DSH 再打开，再在本页 ⌘⇧R 强制刷新。`)
@@ -186,12 +196,12 @@ window.__ModuleLoader__.load({
                 mirrorBehind ? h('li', null, `镜像（${lagHosts}）还没同步 v${pend.to}。插件管理器从镜像安装时会失败并自动装回旧版本，等「镜像同步中」消失后再更新。`) : null,
                 h('li', null, '插件页如果显示「更新失败，已恢复到 …」，展开「查看安装输出」看具体报错：ERR_PNPM_NO_MATCHING_VERSION 是镜像还没同步，minimumReleaseAge 相关的是刚发布的版本被拦住了。'),
                 h('li', null, '插件页如果显示更新成功，是 DSH 没有完全重启：按 ⌘Q 退出再打开（只关窗口不算）。'))),
-          h('button', { type: 'button', className: 'acp-link', onClick: onUpgrade }, '重新更新'),
-          h('button', { type: 'button', className: 'acp-link', onClick: () => saveVer({ pending: null }) }, '不再提示')) : null,
+          h('button', { type: 'button', className: 'acp-link', onClick: onUpgrade }, tr('重新更新')),
+          h('button', { type: 'button', className: 'acp-link', onClick: () => saveVer({ pending: null }) }, tr('不再提示'))) : null,
         up ? h('div', { className: 'acp-upgraded', role: 'status' },
-          h('div', { className: 'ttl' }, `🎉 已升级到 v${up.to}${up.from ? `（原 v${up.from}）` : ''}`),
+          h('div', { className: 'ttl' }, zhEn(`🎉 已升级到 v${up.to}${up.from ? `（原 v${up.from}）` : ''}`, `🎉 Updated to v${up.to}${up.from ? ` (from v${up.from})` : ''}`)),
           info && info.current === CLIENT_VERSION ? h(NotesList, { notes: info.currentNotes }) : null,
-          h('button', { type: 'button', className: 'acp-link', onClick: () => verStore.set({ ...verStore.get(), upgraded: null }) }, '知道了')) : null)
+          h('button', { type: 'button', className: 'acp-link', onClick: () => verStore.set({ ...verStore.get(), upgraded: null }) }, tr('知道了'))) : null)
     }
 
     const NS = 'llmAcp'
@@ -214,18 +224,18 @@ window.__ModuleLoader__.load({
   // Error classes for the insights view and weekly report. Order is the display order;
   // `test` matches an uppercased raw error code. The last entry is the catch-all.
   const ERROR_CLASSES = [
-    { key: 'rate', label: '限流', color: '#f59e0b', test: (c) => /RATE|THROTTLE|TOO_MANY|429/.test(c) },
-    { key: 'quota', label: '额度', color: '#8b5cf6', test: (c) => /QUOTA|CREDIT|INSUFFICIENT|BILLING/.test(c) },
-    { key: 'auth', label: '认证', color: '#ec4899', test: (c) => /AUTH|UNAUTHOR|FORBIDDEN|LOGIN|401|403/.test(c) },
-    { key: 'server', label: '服务端', color: '#dc2626', test: (c) => /SERVER|5\d\d|INTERNAL|BAD_GATEWAY|UNAVAILABLE|UPSTREAM|OVERLOAD/.test(c) },
-    { key: 'timeout', label: '超时', color: '#0ea5e9', test: (c) => /TIMEOUT|TIMED_OUT|ETIMEDOUT|IDLE|STALE/.test(c) },
-    { key: 'transport', label: '传输', color: '#14b8a6', test: (c) => /TRANSPORT|ECONN|CONNECTION|NETWORK|SOCKET|DISCONNECT/.test(c) },
+    { key: 'rate', get label() { return tr('限流') }, color: '#f59e0b', test: (c) => /RATE|THROTTLE|TOO_MANY|429/.test(c) },
+    { key: 'quota', get label() { return tr('额度') }, color: '#8b5cf6', test: (c) => /QUOTA|CREDIT|INSUFFICIENT|BILLING/.test(c) },
+    { key: 'auth', get label() { return tr('认证') }, color: '#ec4899', test: (c) => /AUTH|UNAUTHOR|FORBIDDEN|LOGIN|401|403/.test(c) },
+    { key: 'server', get label() { return tr('服务端') }, color: '#dc2626', test: (c) => /SERVER|5\d\d|INTERNAL|BAD_GATEWAY|UNAVAILABLE|UPSTREAM|OVERLOAD/.test(c) },
+    { key: 'timeout', get label() { return tr('超时') }, color: '#0ea5e9', test: (c) => /TIMEOUT|TIMED_OUT|ETIMEDOUT|IDLE|STALE/.test(c) },
+    { key: 'transport', get label() { return tr('传输') }, color: '#14b8a6', test: (c) => /TRANSPORT|ECONN|CONNECTION|NETWORK|SOCKET|DISCONNECT/.test(c) },
   ]
   /** Map a raw error code to a friendly class (case-insensitive). */
   function errorClass(code) {
     const c = String(code ?? '').toUpperCase()
     for (const cls of ERROR_CLASSES) if (cls.test(c)) return cls
-    return { key: 'other', label: '其他', color: '#94a3b8', test: null }
+    return { key: 'other', label: tr('其他'), color: '#94a3b8', test: null }
   }
 
     const CSS = `
@@ -816,7 +826,7 @@ window.__ModuleLoader__.load({
     }
     const Chip = ({ kind = '', mono, title, children }) => h('span', { className: `acp-chip${kind ? ` ${kind}` : ''}${mono ? ' mono' : ''}`, title }, children)
     const Rate = ({ rate }) => (rate ? h('span', { className: `acp-rate ${rateTier(rate)}` }, rate) : h('span', { style: { color: 'var(--acp-faint)' } }, '-'))
-    const ResultChip = ({ r }) => (r.ok ? h(Chip, { kind: 'ok' }, '成功') : r.aborted || r.code === 'DISPOSED' ? h(Chip, { title: r.message }, '中断') : h(Chip, { kind: 'fail', title: r.message }, r.code ?? '失败'))
+    const ResultChip = ({ r }) => (r.ok ? h(Chip, { kind: 'ok' }, tr('成功')) : r.aborted || r.code === 'DISPOSED' ? h(Chip, { title: r.message }, '中断') : h(Chip, { kind: 'fail', title: r.message }, r.code ?? '失败'))
     const Prov = ({ color, name, model, title }) => h('span', { className: 'acp-pv', title }, h('i', { style: { background: color } }), model ? h('span', { className: 'acp-mono' }, model) : null, h(model ? 'small' : 'span', null, name))
 
     // ── charts ──
@@ -861,8 +871,8 @@ window.__ModuleLoader__.load({
     function seriesFor(days, dim, colorOf, nameOf, modelDays, modelOf) {
       const sum = (a) => a.reduce((s, v) => s + num(v), 0)
       if (dim === 'io') return [
-        { key: 'in', label: '输入', full: '输入 Token', color: C_IN, values: days.map((d) => num(d.inputTokens)) },
-        { key: 'out', label: '输出', full: '输出 Token', color: C_OUT, values: days.map((d) => num(d.outputTokens)) },
+        { key: 'in', label: tr('输入'), full: tr('输入 Token'), color: C_IN, values: days.map((d) => num(d.inputTokens)) },
+        { key: 'out', label: tr('输出'), full: tr('输出 Token'), color: C_OUT, values: days.map((d) => num(d.outputTokens)) },
       ]
       if (dim === 'provider') {
         const keys = new Set()
@@ -1011,7 +1021,7 @@ window.__ModuleLoader__.load({
 
       return h(Fragment, null,
         h('div', { className: 'acp-plot', ref: boxRef, onMouseLeave: () => setHot(-1) },
-          h('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img', 'aria-label': '每日 Token 趋势', style: { display: 'block' } },
+          h('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img', 'aria-label': tr('每日 Token 趋势'), style: { display: 'block' } },
             grid, band, ...marks, ...flags, emptyHint, ...axis, ...hit)),
         h('div', { className: 'acp-readout' },
           h('span', null, h('b', null, d.date ?? '-')),
@@ -1050,18 +1060,18 @@ window.__ModuleLoader__.load({
         onClick: () => { set(v); setHidden([]) },
       }, label)))
       const doExport = (kind) => exportChart(plotRef.current?.querySelector('svg'), kind, `acp-trend-${dateStr(Date.now())}`)
-      return h(Card, { className: 's8', title: '每日 Token 趋势', ...card },
+      return h(Card, { className: 's8', title: tr('每日 Token 趋势'), ...card },
         h('div', { className: 'acp-tt' },
           h('span', { className: 'acp-tt-l' }, '图表'), seg(TYPES, type, setType),
           h('span', { className: 'acp-sp' }),
           h('span', { className: 'acp-tt-l' }, '维度'), seg(DIMS, dim, setDim),
-          h('button', { type: 'button', className: 'acp-btn', title: '把当前图表存为 SVG 文件', onClick: () => doExport('svg') }, 'SVG'),
-          h('button', { type: 'button', className: 'acp-btn', title: '把当前图表存为 PNG 图片（2 倍清晰度）', onClick: () => doExport('png') }, 'PNG')),
-        hasTurns ? h(TrendChart, { days, series, type, hidden, estValues, prevValues, onDayClick, plotRef }) : h(Empty, { text: '所选范围内还没有调用记录' }),
+          h('button', { type: 'button', className: 'acp-btn', title: tr('把当前图表存为 SVG 文件'), onClick: () => doExport('svg') }, 'SVG'),
+          h('button', { type: 'button', className: 'acp-btn', title: tr('把当前图表存为 PNG 图片（2 倍清晰度）'), onClick: () => doExport('png') }, 'PNG')),
+        hasTurns ? h(TrendChart, { days, series, type, hidden, estValues, prevValues, onDayClick, plotRef }) : h(Empty, { text: tr('所选范围内还没有调用记录') }),
         hasTurns ? h('div', { className: 'acp-legend wrap' },
           ...series.map((s) => h('button', { key: s.key, type: 'button', className: `acp-lg${hidden.includes(s.key) ? ' off' : ''}`, title: `${s.full} · 点击${hidden.includes(s.key) ? '显示' : '隐藏'}`, onClick: () => toggle(s.key) },
             h('i', { style: { background: s.color } }), s.label)),
-          showFail ? h('span', { className: 'acp-lg', style: { cursor: 'default' }, title: '当天有失败的调用' }, h('i', { style: { background: 'var(--acp-err)', borderRadius: '50%' } }), '有失败') : null,
+          showFail ? h('span', { className: 'acp-lg', style: { cursor: 'default' }, title: '当天有失败的调用' }, h('i', { style: { background: 'var(--acp-err)', borderRadius: '50%' } }), tr('有失败')) : null,
           estTotal > 0 ? h('span', { className: 'acp-lg', style: { cursor: 'default' }, title: '虚线为估算轮次的 Token 合计（CLI 未上报用量，按字符 ÷ 4）' }, h('i', { style: { width: 12, height: 0, borderTop: '2px dashed var(--acp-warn)', background: 'transparent', borderRadius: 0 } }), '估算(虚线)') : null,
           prevOn ? h('span', { className: 'acp-lg', style: { cursor: 'default' }, title: '上一个等长周期的每日 Token 合计，按日序对齐' }, h('i', { style: { width: 12, height: 0, borderTop: '2px dashed ' + C_OTHER, background: 'transparent', borderRadius: 0 } }), '上期(虚线)') : null,
           hidden.length ? h('button', { type: 'button', className: 'acp-btn', style: { padding: '1px 8px', fontSize: 11 }, onClick: () => setHidden([]) }, '全部显示') : null) : null,
@@ -1107,7 +1117,7 @@ window.__ModuleLoader__.load({
       const gap = segs.length > 1 ? 0.9 : 0
       const focus = segs.find((s) => s.key === hot)
       return h('div', { className: 'acp-donut' },
-        h('svg', { viewBox: '0 0 42 42', width: 136, height: 136, style: { flex: 'none' }, role: 'img', 'aria-label': '提供方占比' },
+        h('svg', { viewBox: '0 0 42 42', width: 136, height: 136, style: { flex: 'none' }, role: 'img', 'aria-label': tr('提供方占比') },
           h('circle', { cx: 21, cy: 21, r: 15.915, fill: 'none', strokeWidth: 6, style: { stroke: 'var(--acp-sub)' } }),
           ...segs.map((s, i) => {
             const len = Math.max(0.3, s.p - gap)
@@ -1131,7 +1141,7 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'acp-rank pick' }, ...top.map((m, i) => h('div', {
         key: `${m.provider}/${m.model}`,
         className: `r${onPick ? ' click' : ''}${active === `${m.provider}/${m.model}` ? ' sel' : ''}`,
-        title: onPick ? (active === `${m.provider}/${m.model}` ? '点击取消全页筛选' : '点击让全页只看这个模型') : undefined,
+        title: onPick ? (active === `${m.provider}/${m.model}` ? '点击取消全页筛选' : tr('点击让全页只看这个模型')) : undefined,
         onClick: onPick ? () => onPick(m.provider, m.model) : undefined,
       },
         h('span', { className: `no${i < 3 ? ' top' : ''}` }, String(i + 1)),
@@ -1273,7 +1283,7 @@ window.__ModuleLoader__.load({
           h(Chip, null, pr.image ? '支持图片' : '不支持图片'),
           pr.loadSession ? h(Chip, null, '可接回会话') : null,
           h(Chip, { kind: 'brand' }, `建议：${pr.modelVia === 'configOption' ? 'ACP 切换' : '命令行 --model'}`),
-          pr.modelVia && via !== pr.modelVia ? h('button', { type: 'button', className: 'acp-btn', onClick: onAdopt }, '采用建议') : null),
+          pr.modelVia && via !== pr.modelVia ? h('button', { type: 'button', className: 'acp-btn', onClick: onAdopt }, tr('采用建议')) : null),
         ids.length ? h('div', { className: 'acp-mchips' }, ...ids.slice(0, 24).map((id) => h('span', { key: id }, id)), ids.length > 24 ? h('span', { className: 'more' }, `+${ids.length - 24}`) : null) : null)
     }
 
@@ -1410,8 +1420,8 @@ window.__ModuleLoader__.load({
             h('button', { type: 'button', className: 'acp-btn', disabled: !!errors.command || pr?.loading || saving, onClick: doProbe, title: '做一次 ACP 握手：不发提示词、不花 Token' }, pr?.loading ? '检测中…' : '检测连接'),
             h('span', { className: 'hint' }, pr?.ok ? '✓ 已检测' : editing ? '' : '建议先检测再添加'),
             h('span', { style: { flex: 1 } }),
-            editing ? h('button', { type: 'button', className: 'acp-btn danger', disabled: saving, onClick: remove }, '删除') : null,
-            h('button', { type: 'button', className: 'acp-btn', disabled: saving, onClick: onClose }, '取消'),
+            editing ? h('button', { type: 'button', className: 'acp-btn danger', disabled: saving, onClick: remove }, tr('删除')) : null,
+            h('button', { type: 'button', className: 'acp-btn', disabled: saving, onClick: onClose }, tr('取消')),
             h('button', { type: 'button', className: 'acp-btn pri', disabled: saving || (tried && bad), onClick: save }, saving ? '保存中…' : editing ? '保存' : '添加'))))
     }
 
@@ -1503,7 +1513,7 @@ window.__ModuleLoader__.load({
           c.warning ? h('div', { className: 'note', style: { color: 'var(--acp-warn)' } }, c.warning) : null,
           h('div', { className: 'ft' },
             on
-              ? h('button', { type: 'button', className: 'acp-btn', disabled: !canSave, onClick: () => onEditor({ mode: 'edit', id: c.configuredAs, spec: editSpecOf(p), title: p ? short(p.displayName) : c.displayName, efforts: p?.runtime?.efforts }) }, '编辑配置')
+              ? h('button', { type: 'button', className: 'acp-btn', disabled: !canSave, onClick: () => onEditor({ mode: 'edit', id: c.configuredAs, spec: editSpecOf(p), title: p ? short(p.displayName) : c.displayName, efforts: p?.runtime?.efforts }) }, tr('编辑配置'))
               : h('button', { type: 'button', className: 'acp-btn pri', disabled: !canSave, onClick: () => onEditor({ mode: 'add', id: c.id, spec: c.spec, recipeModelVia: c.recipeModelVia, title: c.displayName, note: c.note }) }, '配置并添加')))
       }
       return h('div', { className: 'acp-disc-wrap' },
@@ -1516,7 +1526,7 @@ window.__ModuleLoader__.load({
             h('div', { className: 's', 'aria-live': 'polite' }, skel
               ? h(Fragment, null, h('span', { className: 'acp-spin', 'aria-hidden': true }), '正在扫描：搜索 PATH 与常用安装目录，读取各 CLI 版本…')
               : res ? `找到 ${cands.length} 个 · ${fresh} 个可添加 · 搜索了 ${res.dirs.length} 个目录` : '找出已安装的 CLI，按推荐配置一键接入，不用手写 YAML')),
-          onClose ? h('button', { type: 'button', className: 'acp-btn', onClick: onClose, title: '收起；之后点顶部「配置 CLI」再打开' }, '收起') : null,
+          onClose ? h('button', { type: 'button', className: 'acp-btn', onClick: onClose, title: '收起；之后点顶部「配置 CLI」再打开' }, tr('收起')) : null,
           h('button', { type: 'button', className: 'acp-btn', disabled: !canSave, onClick: () => onEditor({ mode: 'add', id: '', spec: { command: '', args: [] } }) }, '+ 手动添加'),
           h('button', { type: 'button', className: 'acp-btn pri', disabled: loading, onClick: run, style: { display: 'inline-flex', alignItems: 'center', gap: 6 } },
             loading ? h(Fragment, null, h('span', { className: 'acp-spin on-pri', 'aria-hidden': true }), '扫描中…') : res ? '重新扫描' : '扫描本机')),
@@ -1559,12 +1569,12 @@ window.__ModuleLoader__.load({
           h(Switch, { checked: p.enabled, disabled: busy !== '', label: `${p.enabled ? '停用' : '启用'} ${name}`, onChange: (v) => act(`p:${p.id}`, () => post(R.provider, { provider: p.id, enabled: v })) })),
         p.status === 'fail' || p.status === 'warn' ? h('div', { className: 'acp-note', style: { color: p.status === 'fail' ? 'var(--acp-err)' : 'var(--acp-warn)' } }, p.statusText) : null,
         h('div', { className: 'acp-mini' },
-          h('div', null, h('div', { className: 'l' }, '轮次'), h('div', { className: 'v' }, n0(pu?.turns))),
+          h('div', null, h('div', { className: 'l' }, tr('轮次')), h('div', { className: 'v' }, n0(pu?.turns))),
           h('div', null, h('div', { className: 'l' }, 'Token'), h('div', { className: 'v' }, compact(tokOf(pu)))),
-          h('div', null, h('div', { className: 'l' }, '成功率'), h('div', { className: 'v' }, pct(num(pu?.ok), num(pu?.turns)))),
-          h('div', null, h('div', { className: 'l' }, '平均耗时'), h('div', { className: 'v' }, pu?.turns ? dur(pu.ms / pu.turns) : '-'))),
+          h('div', null, h('div', { className: 'l' }, tr('成功率')), h('div', { className: 'v' }, pct(num(pu?.ok), num(pu?.turns)))),
+          h('div', null, h('div', { className: 'l' }, tr('平均耗时')), h('div', { className: 'v' }, pu?.turns ? dur(pu.ms / pu.turns) : '-'))),
         days.length > 1 ? h(Spark, { values: days.map((d) => num(d.providers?.[p.id])), color }) : null,
-        h('div', { className: 'acp-meterline' }, h('span', null, '可用模型'), h('span', null, p.models ? `${models.length - off} / ${models.length}${off ? ` · 停用 ${off}` : ''}` : '读取中…')),
+        h('div', { className: 'acp-meterline' }, h('span', null, '可用模型'), h('span', null, p.models ? `${models.length - off} / ${models.length}${off ? ` · 停用 ${off}` : ''}` : tr('读取中…'))),
         h('div', { className: 'acp-meter' }, h('i', { style: { width: `${models.length ? ((models.length - off) / models.length) * 100 : 0}%` } })),
         h('div', { className: 'acp-pool' },
           h('div', { className: 'acp-pool-hd' }, h('span', null, '会话池'), h('span', null, `暖 ${num(rt.warmSessions)} / ${num(p.maxSessions)} · 进程 ${num(rt.liveChildren)}`)),
@@ -1572,7 +1582,7 @@ window.__ModuleLoader__.load({
           h('div', { className: 'acp-note', style: { marginTop: 4 } }, `${p.reuseSessions ? '复用暖会话' : '每轮新进程'} · 空闲 ${dur(p.idleTimeoutMs)} 回收${p.resumeSessions ? ' · 支持恢复' : ''}`)),
         h('div', { className: 'acp-info' },
           h('span', null, '进程 ', h('b', null, num(rt.liveChildren)), ' · 暖会话 ', h('b', null, `${num(rt.warmSessions)}/${p.maxSessions}`)),
-          h('span', null, '模型发现 ', h('b', null, rt.discovery ? `${rt.discovery.ok ? '成功' : '失败'} ${dur(rt.discovery.ms)}` : '未执行'), rt.discovery ? ` · ${ago(rt.discovery.at)}` : ''),
+          h('span', null, '模型发现 ', h('b', null, rt.discovery ? `${rt.discovery.ok ? tr('成功') : '失败'} ${dur(rt.discovery.ms)}` : '未执行'), rt.discovery ? ` · ${ago(rt.discovery.at)}` : ''),
           rt.catalogCache ? h('span', { title: rt.catalogCache.disk ? '重启后先用磁盘上的上次结果，过期后在后台刷新' : '内存中的发现结果，过期后先用旧列表、后台刷新' }, '模型列表 ', h('b', null, `${rt.catalogCache.count} 个`), ` · ${rt.catalogCache.disk ? '磁盘缓存' : '缓存'}于 ${ago(rt.catalogCache.at)}`) : null,
           h('span', null, '图片 ', h('b', null, rt.images === true ? '支持' : rt.images === false ? '不支持' : '未知')),
           h('span', { title: last?.message }, '最近一轮 ', last ? h(ResultChip, { r: last }) : h('b', null, '无'), last ? ` ${mName(last.model)} · ${dur(last.ms)} · ${ago(last.at)}` : '')),
@@ -1580,21 +1590,21 @@ window.__ModuleLoader__.load({
           h('summary', null, '配置详情'),
           h('dl', { className: 'acp-dl' },
             h('dt', null, '命令'), h('dd', { className: 'acp-mono' }, cmd),
-            h('dt', null, '权限'), h('dd', null, `${p.permission}（${PERM[p.permission] ?? ''}）`),
-            h('dt', null, '选模型'), h('dd', null, p.modelVia === 'configOption' ? 'ACP 配置项（会话内切换）' : '命令行 --model'),
-            h('dt', null, '超时'), h('dd', null, `单轮 ${dur(p.promptTimeoutMs)} · 无输出 ${dur(p.idleTimeoutMs)} · 启动 ${dur(p.startupTimeoutMs)}`),
-            h('dt', null, '会话'), h('dd', null, `${p.reuseSessions ? '复用暖会话' : '每轮新进程'} · ${p.resumeSessions ? '支持恢复' : '不恢复'}`))),
+            h('dt', null, tr('权限')), h('dd', null, `${p.permission}（${PERM[p.permission] ?? ''}）`),
+            h('dt', null, '选模型'), h('dd', null, p.modelVia === 'configOption' ? 'ACP 配置项（会话内切换）' : tr('命令行 --model')),
+            h('dt', null, tr('超时')), h('dd', null, `单轮 ${dur(p.promptTimeoutMs)} · 无输出 ${dur(p.idleTimeoutMs)} · 启动 ${dur(p.startupTimeoutMs)}`),
+            h('dt', null, tr('会话')), h('dd', null, `${p.reuseSessions ? '复用暖会话' : '每轮新进程'} · ${p.resumeSessions ? '支持恢复' : '不恢复'}`))),
         h('div', { className: 'acp-tools' },
           h('button', { type: 'button', className: `acp-btn${open ? ' on' : ''}`, onClick: () => setOpen(!open) }, open ? '收起模型' : `管理模型${p.models ? ` · ${models.length}` : ''}`),
-          h('button', { type: 'button', className: 'acp-btn', disabled: busy !== '', onClick: () => act(`r:${p.id}`, () => post(R.refresh, { provider: p.id })) }, busy === `r:${p.id}` ? '读取中…' : '重新读取模型'),
-          onEdit ? h('button', { type: 'button', className: 'acp-btn', onClick: onEdit }, '编辑配置') : null,
-          onRemove ? h('button', { type: 'button', className: 'acp-btn danger', disabled: busy !== '', title: '从插件配置里删除这个渠道（停用只是暂时关掉，删除后卡片和模型列表里都不再出现）', onClick: onRemove }, busy === `x:${p.id}` ? '删除中…' : '删除') : null),
+          h('button', { type: 'button', className: 'acp-btn', disabled: busy !== '', onClick: () => act(`r:${p.id}`, () => post(R.refresh, { provider: p.id })) }, busy === `r:${p.id}` ? tr('读取中…') : '重新读取模型'),
+          onEdit ? h('button', { type: 'button', className: 'acp-btn', onClick: onEdit }, tr('编辑配置')) : null,
+          onRemove ? h('button', { type: 'button', className: 'acp-btn danger', disabled: busy !== '', title: '从插件配置里删除这个渠道（停用只是暂时关掉，删除后卡片和模型列表里都不再出现）', onClick: onRemove }, busy === `x:${p.id}` ? '删除中…' : tr('删除')) : null),
         open ? h('div', { style: { marginTop: 10 } },
           h('div', { className: 'acp-tools', style: { marginTop: 0, marginBottom: 8 } },
             h('input', { className: 'acp-input', type: 'search', placeholder: '搜索模型名或 ID…', value: filter, onChange: (e) => setFilter(e.target.value) }),
-            h('button', { type: 'button', className: 'acp-btn', disabled: busy !== '' || off === 0, onClick: () => setModels(models.map((m) => m.id), false) }, '全部启用'),
-            h('button', { type: 'button', className: 'acp-btn', disabled: busy !== '' || !models.length, onClick: () => setModels(models.filter((m) => m.id !== 'default').map((m) => m.id), true) }, '全部停用（保留默认）'),
-            h('button', { type: 'button', className: 'acp-btn', disabled: busy !== '' || !models.some((m) => rateNum(m.rate) >= 1), onClick: () => setModels(models.filter((m) => rateNum(m.rate) >= 1).map((m) => m.id), true) }, '停用 ≥1x 高倍率')),
+            h('button', { type: 'button', className: 'acp-btn', disabled: busy !== '' || off === 0, onClick: () => setModels(models.map((m) => m.id), false) }, tr('全部启用')),
+            h('button', { type: 'button', className: 'acp-btn', disabled: busy !== '' || !models.length, onClick: () => setModels(models.filter((m) => m.id !== 'default').map((m) => m.id), true) }, tr('全部停用（保留默认）')),
+            h('button', { type: 'button', className: 'acp-btn', disabled: busy !== '' || !models.some((m) => rateNum(m.rate) >= 1), onClick: () => setModels(models.filter((m) => rateNum(m.rate) >= 1).map((m) => m.id), true) }, tr('停用 ≥1x 高倍率'))),
           h('div', { className: 'acp-scroll' }, h('table', { className: 'acp-table' },
             h('thead', null, h('tr', null, ...['启用', '名称', '写法', '倍率', '轮次', 'Token', '最近使用'].map((t, i) => h('th', { key: t, className: i === 4 || i === 5 ? 'num' : undefined }, t)))),
             h('tbody', null, ...shown.map((m) => {
@@ -1669,7 +1679,7 @@ window.__ModuleLoader__.load({
           done ? h(Chip, { title: '该会话最后一轮的活动时间' }, `最近活动 ${ago(s.lastAt || f.startedAt)}`)
             : h(Chip, { title: '已运行时长，随刷新更新' }, `已运行 ${dur(Date.now() - f.startedAt)}`),
           !done && tv.limit > 0 ? h(Chip, { kind: tv.over ? 'fail' : tv.near ? 'warn' : '', title: `单轮超时 ${dur(tv.limit)} · 已运行 ${dur(tv.elapsed)}` }, tv.over ? '已超时' : `剩余 ${dur(tv.remaining)}`) : null,
-          onFilterSession && f.session ? h('button', { type: 'button', className: 'acp-btn', title: '让全页卡片只统计这个会话', onClick: () => onFilterSession(f.session) }, '只看此会话') : null),
+          onFilterSession && f.session ? h('button', { type: 'button', className: 'acp-btn', title: '让全页卡片只统计这个会话', onClick: () => onFilterSession(f.session) }, tr('只看此会话')) : null),
         h('div', { className: 'acp-sd-info' },
           h('span', null, '开始 ', h('b', null, fmtTime(f.startedAt))),
           h('span', null, '提供方 ', h('b', null, f.name ?? nameOf(f.provider))),
@@ -1864,7 +1874,7 @@ window.__ModuleLoader__.load({
       if (num(t.estimated)) L.push(`- 数据质量：${n0(t.estimated)} 轮未上报用量，Token 按字符 ÷ 4 估算（占 ${pct(t.estimated, t.turns)}）`)
       const pv = prev?.total
       if (pv && num(pv.turns) > 0) {
-        const d = (c, o) => { const x = num(c), y = num(o); if (!y) return x ? '新增' : '持平'; const p = Math.round(((x - y) / y) * 100); return p > 0 ? `+${p}%` : `${p}%` }
+        const d = (c, o) => { const x = num(c), y = num(o); if (!y) return x ? tr('新增') : '持平'; const p = Math.round(((x - y) / y) * 100); return p > 0 ? `+${p}%` : `${p}%` }
         L.push('', '## 环比上期（等长周期）',
           `- 轮次 ${n0(pv.turns)} → ${n0(t.turns)}（${d(t.turns, pv.turns)}）`,
           `- Token ${compact(tokOf(pv))} → ${compact(tokens)}（${d(tokens, tokOf(pv))}）`,
@@ -2117,7 +2127,7 @@ window.__ModuleLoader__.load({
 
       const matrix = h('div', { className: 'acp-scroll' }, h('table', { className: 'acp-table acp-mx' },
         h('thead', null, h('tr', null,
-          h('th', { key: 'sess' }, '会话'),
+          h('th', { key: 'sess' }, tr('会话')),
           ...dv.keys.map((k) => h('th', { key: k.key, className: 'num', title: k.key === '__other__' ? '其余模型合计' : group === 'provider' ? k.provider : `${k.provider}/${k.model}` }, h('i', { className: 'dot', style: { background: k.color } }), k.label)),
           h('th', { key: 'sum', className: 'num' }, '合计'))),
         h('tbody', null, ...shown.map((s) => h('tr', { key: s.session || 'none' },
@@ -2142,14 +2152,14 @@ window.__ModuleLoader__.load({
           h('span', { className: 'acp-sp' }),
           seg(SD_VIEWS, view, setView, '分布视图'),
           view === 'bars' ? h(Fragment, null,
-            h('button', { type: 'button', className: 'acp-btn', title: '把当前图表存为 SVG 文件', onClick: () => doExport('svg') }, 'SVG'),
-            h('button', { type: 'button', className: 'acp-btn', title: '把当前图表存为 PNG 图片（2 倍清晰度）', onClick: () => doExport('png') }, 'PNG')) : null),
+            h('button', { type: 'button', className: 'acp-btn', title: tr('把当前图表存为 SVG 文件'), onClick: () => doExport('svg') }, 'SVG'),
+            h('button', { type: 'button', className: 'acp-btn', title: tr('把当前图表存为 PNG 图片（2 倍清晰度）'), onClick: () => doExport('png') }, 'PNG')) : null),
         dv.sessions.length ? h(Fragment, null,
           view === 'bars' ? bars : matrix,
           h('div', { className: 'acp-legend wrap' }, ...dv.keys.map((k) => (k.key === '__other__'
             ? h('span', { key: k.key, className: 'acp-lg', style: { cursor: 'default' }, title: '其余模型合计' }, h('i', { style: { background: k.color } }), `${k.label} · ${fmt(k.value)}`)
-            : h('button', { key: k.key, type: 'button', className: 'acp-lg', title: `${k.label} · 点击让全页只看这个${group === 'provider' ? '提供方' : '模型'}`, onClick: () => onPickKey?.(k.key, group) }, h('i', { style: { background: k.color } }), `${k.label} · ${fmt(k.value)}`)))),
-          h('div', { className: 'acp-note' }, `${n0(dv.sessionCount)} 个会话 · ${n0(dv.multi)} 个用了多${group === 'provider' ? '提供方' : '模型'} · 合计 ${fmt(dv.totalValue)} ${unit}${dv.sessionCount > shown.length ? ` · 显示前 ${shown.length} 个` : ''}`),
+            : h('button', { key: k.key, type: 'button', className: 'acp-lg', title: `${k.label} · 点击让全页只看这个${group === 'provider' ? tr('提供方') : '模型'}`, onClick: () => onPickKey?.(k.key, group) }, h('i', { style: { background: k.color } }), `${k.label} · ${fmt(k.value)}`)))),
+          h('div', { className: 'acp-note' }, `${n0(dv.sessionCount)} 个会话 · ${n0(dv.multi)} 个用了多${group === 'provider' ? tr('提供方') : '模型'} · 合计 ${fmt(dv.totalValue)} ${unit}${dv.sessionCount > shown.length ? ` · 显示前 ${shown.length} 个` : ''}`),
           !dv.full ? h('div', { className: 'acp-note', style: { color: 'var(--acp-warn)' } }, '宿主未更新：会话分布仅统计最近 100 轮日志窗口内的记录，重启一次 DSH 后按完整范围统计。') : null)
           : h(Empty, { text: '所选范围内还没有会话用量' }))
     }
@@ -2221,7 +2231,7 @@ window.__ModuleLoader__.load({
             h('span', { className: 'val' }, compact(r.credit)),
             h('span', { className: 'track' }, h('i', { style: { width: `${Math.max(2, (r.credit / max) * 100)}%`, background: colorOf(r.provider) } }))))),
           h('div', { className: 'acp-note' }, `按 CLI 模型倍率 × Token 估算，仅供参考、非实际金额。${v.unknown ? ` ${v.unknown} 个模型未标注倍率，按 1x 计入。` : ''}`))
-          : h(Empty, { text: '所选范围内还没有调用记录' }))
+          : h(Empty, { text: tr('所选范围内还没有调用记录') }))
     }
 
     /** Characters & throughput card (s4). */
@@ -2240,7 +2250,7 @@ window.__ModuleLoader__.load({
               h('span', { className: 'nm' }, modelOf(m.provider, m.model)),
               h('b', null, `${tps(m.tps)} t/s`))))) : null,
           h('div', { className: 'acp-note' }, `吞吐 = 输出 Token ÷ 轮次总耗时${v.full ? '' : `，仅统计最近 ${v.sample} 条日志（后端未聚合该字段）`}。估算轮次按字符 ÷ 4 计。`))
-          : h(Empty, { text: '所选范围内还没有调用记录' }))
+          : h(Empty, { text: tr('所选范围内还没有调用记录') }))
     }
 
     // ── per-model TPS trend (/api/llm-acp.tps), duration buckets, projects, session depth ──
@@ -2305,7 +2315,7 @@ window.__ModuleLoader__.load({
         seg(TPS_WINS, win, pickWin, 'TPS 时间窗'))
       const winText = win === 'day' ? '最近一天' : win === 'week' ? '最近一周' : '最近一个月'
       return h(Card, { className: 's8', title: '模型 TPS 趋势', right, ...card },
-        err ? h('div', { className: 'acp-note', style: { color: 'var(--acp-err)' } }, /404/.test(err) ? '宿主还是旧版本：重启一次 DSH 后可用' : err) : null,
+        err ? h('div', { className: 'acp-note', style: { color: 'var(--acp-err)' } }, /404/.test(err) ? tr('宿主还是旧版本：重启一次 DSH 后可用') : err) : null,
         !res && !err ? h('div', { className: 'acp-skel', style: { height: 190 } }) : null,
         res && !any ? h(Empty, { text: `${winText}没有成功且有输出的轮次` }) : null,
         res && any ? h('div', { className: 'acp-tps' },
@@ -2345,7 +2355,7 @@ window.__ModuleLoader__.load({
             h('b', null, n0(b.count), h('small', null, pct(b.count, total))))),
           provs.length ? h('div', { className: 'acp-legend wrap' }, ...provs.map((pid) => h('span', { key: pid }, h('i', { style: { background: colorOf(pid) } }), nameOf(pid)))) : null,
           h('div', { className: 'acp-note' }, `最常见 ${top?.label ?? '-'}（${pct(top?.count, total)}）· P50 ${dur(usage?.latency?.p50)} · P90 ${dur(usage?.latency?.p90)}`))
-          : h(Empty, { text: usage?.durations ? '所选范围内还没有成功的轮次' : '宿主还是旧版本：重启一次 DSH 后可用' }))
+          : h(Empty, { text: usage?.durations ? '所选范围内还没有成功的轮次' : tr('宿主还是旧版本：重启一次 DSH 后可用') }))
     }
 
     const baseOf = (p) => { const s = String(p ?? '').replace(/\/+$/, ''); return s ? s.split('/').pop() || s : '' }
@@ -2361,7 +2371,7 @@ window.__ModuleLoader__.load({
             h('span', { className: 'bar' }, h('i', { style: { width: `${(tokOf(p) / max) * 100}%`, background: 'var(--acp-in)' } })),
             h('b', null, compact(tokOf(p)))))),
           h('div', { className: 'acp-note' }, '目录 = 会话的工作目录，悬停看完整路径。'))
-          : h(Empty, { text: usage?.byProject ? '所选范围内还没有调用记录' : '宿主还是旧版本：重启一次 DSH 后可用' }))
+          : h(Empty, { text: usage?.byProject ? tr('所选范围内还没有调用记录') : tr('宿主还是旧版本：重启一次 DSH 后可用') }))
     }
 
     function DepthCard({ usage, card }) {
@@ -2381,7 +2391,7 @@ window.__ModuleLoader__.load({
               h('i', { style: { height: `${(b.avgIn / gmax) * 100}%` } })))),
             h('div', { className: 'acp-grow-ax' }, ...grow.map((b) => h('span', { key: b.i }, b.label)))) : null,
           h('div', { className: 'acp-note' }, '只统计带会话 ID 的轮次。'))
-          : h(Empty, { text: usage?.depth ? '所选范围内还没有会话' : '宿主还是旧版本：重启一次 DSH 后可用' }))
+          : h(Empty, { text: usage?.depth ? '所选范围内还没有会话' : tr('宿主还是旧版本：重启一次 DSH 后可用') }))
     }
 
     /** Data-quality strip: replaces the old one-line estimated note. */
@@ -2433,7 +2443,7 @@ window.__ModuleLoader__.load({
             on ? h('dl', { className: 'acp-errd' },
               h('dt', null, '信息'), h('dd', { className: 'acp-mono' }, e.message || '（CLI 未提供错误信息）'),
               h('dt', null, '涉及'), h('dd', { title: `${e.provider}/${e.model ?? 'default'}` }, `${nameOf(e.provider)} · ${modelOf(e.provider, e.model ?? 'default')}`),
-              h('dt', null, '最近'), h('dd', null, `${fmtTime(e.lastAt)} · ${ago(e.lastAt)}`),
+              h('dt', null, tr('最近')), h('dd', null, `${fmtTime(e.lastAt)} · ${ago(e.lastAt)}`),
               e.firstAt ? h('dt', null, '最早') : null, e.firstAt ? h('dd', null, `${fmtTime(e.firstAt)}（近 ${v.sample} 轮内）`) : null) : null)
         })))
     }
@@ -2446,7 +2456,7 @@ window.__ModuleLoader__.load({
       return h(Card, {
         className: 's12', title: 'CLI 用量/额度探测',
         sub: `${v.ok}/${v.total} 个 CLI 可查询 · 非账户余额`,
-        right: h('button', { type: 'button', className: 'acp-quota-refresh', disabled: !!busy, onClick: onRefresh, title: '重新运行各 CLI 的用量探测命令' }, busy ? '探测中…' : '刷新'),
+        right: h('button', { type: 'button', className: 'acp-quota-refresh', disabled: !!busy, onClick: onRefresh, title: tr('重新运行各 CLI 的用量探测命令') }, busy ? tr('探测中…') : tr('刷新')),
         ...card,
       },
         v.rows.length ? h('div', null, v.rows.map((r) => {
@@ -2482,7 +2492,7 @@ window.__ModuleLoader__.load({
       if (v.limit <= 0) return h('span', { style: { color: 'var(--acp-faint)' } }, '-')
       return h('div', { className: `acp-tm${v.over ? ' over' : v.near ? ' near' : ''}`, title: `单轮超时 ${dur(v.limit)} · 已运行 ${dur(v.elapsed)}${v.over ? ' · 已超时' : ` · 剩余 ${dur(v.remaining)}`}` },
         h('span', { className: 'bar' }, h('i', { style: { width: `${v.ratio * 100}%` } })),
-        h('span', null, v.over ? '超时' : `${Math.round(v.ratio * 100)}%`))
+        h('span', null, v.over ? tr('超时') : `${Math.round(v.ratio * 100)}%`))
     }
 
     function Skeleton() {
@@ -2498,6 +2508,7 @@ window.__ModuleLoader__.load({
     function Console(props) {
       const mode = props?.mode ?? 'sidebar'
       const lockSession = typeof props?.lockSession === 'string' ? props.lockSession : ''
+      useStore(langStore)
       const [prefs0] = useState(loadPrefs)
       const [range, setRange] = useState(lockSession ? '0' : (prefs0.range ?? '7'))
       const [customOn, setCustomOn] = useState(prefs0.customOn ?? false)
@@ -2688,7 +2699,7 @@ window.__ModuleLoader__.load({
       const modelsAll = providers.reduce((s, p) => s + (p.models ?? []).length, 0)
       const success = pctN(num(t.ok), num(t.turns))
       const sColor = success >= 90 ? '#10b981' : success >= 60 ? '#f59e0b' : '#f43f5e'
-      const rangeLabel = customValid ? `${fromStr} ~ ${toStr}` : (RANGES.find(([v]) => v === range) ?? [])[1] ?? ''
+      const rangeLabel = customValid ? `${fromStr} ~ ${toStr}` : tr((RANGES.find(([v]) => v === range) ?? [])[1] ?? '')
       const share = providers.map((p) => { const u = usage.byProvider.find((x) => x.provider === p.id); return { key: p.id, label: short(p.displayName), color: colorOf(p.id), value: tokOf(u), text: compact(tokOf(u)), title: `${short(p.displayName)}：${compact(tokOf(u))} Token · ${num(u?.turns)} 轮` } })
       const star = (r) => (r.estimated ? '*' : '')
       // Host capability echoes: an old host ignores from/to, filter and compare.
@@ -2762,10 +2773,10 @@ window.__ModuleLoader__.load({
             : drill.error ? h('div', { className: 'acp-note', style: { color: 'var(--acp-err)' } }, drill.error)
               : dv ? h(Fragment, null,
                 h('div', { className: 'acp-kv2' },
-                  h('div', null, h('div', { className: 'l' }, '轮次'), h('div', { className: 'v' }, n0(dv.total.turns))),
+                  h('div', null, h('div', { className: 'l' }, tr('轮次')), h('div', { className: 'v' }, n0(dv.total.turns))),
                   h('div', null, h('div', { className: 'l' }, 'Token'), h('div', { className: 'v' }, compact(num(dv.total.inputTokens) + num(dv.total.outputTokens)))),
-                  h('div', null, h('div', { className: 'l' }, '失败'), h('div', { className: 'v' }, n0(dv.total.failed))),
-                  h('div', null, h('div', { className: 'l' }, '成功率'), h('div', { className: 'v' }, pct(dv.total.ok, dv.total.turns)))),
+                  h('div', null, h('div', { className: 'l' }, tr('失败')), h('div', { className: 'v' }, n0(dv.total.failed))),
+                  h('div', null, h('div', { className: 'l' }, tr('成功率')), h('div', { className: 'v' }, pct(dv.total.ok, dv.total.turns)))),
                 h('div', { className: 'acp-sub-h' }, '当天 24h 分布'),
                 h(HourChart, { hours: dv.hours }),
                 dv.sessions.length ? h(Fragment, null,
@@ -2784,27 +2795,27 @@ window.__ModuleLoader__.load({
       return h('div', { className: `acp${compactMode ? ' compact' : ''}${mode === 'page' ? ' acp-page' : ''}` },
         h('style', null, CSS),
         mode === 'page' ? h('div', { className: 'acp-pagehead' },
-          h('div', { className: 'acp-ph-row' }, h('h1', null, 'ACP 洞察'), h(Guard, { name: 'version badge', render: () => h(VersionBadge, null) })),
-          h('span', { className: 'sub' }, '全部会话的 ACP CLI 状态、模型与 Token 用量；点图表 / 会话行可交叉筛选，↗ 直接打开对应会话。')) : null,
+          h('div', { className: 'acp-ph-row' }, h('h1', null, tr('ACP 洞察')), h(Guard, { name: 'version badge', render: () => h(VersionBadge, null) })),
+          h('span', { className: 'sub' }, tr('全部会话的 ACP CLI 状态、模型与 Token 用量；点图表 / 会话行可交叉筛选，↗ 直接打开对应会话。'))) : null,
         h('div', { className: 'acp-hero' },
           h('div', { className: 'acp-row' },
             h('div', { className: 'acp-logo' }, h(Icon, { width: 18, height: 18, strokeWidth: 1.8 })),
             h('div', null,
-              h('div', { className: 'acp-h1' }, mode === 'page' ? 'ACP 控制台' : lockSession ? `本会话 · ${sessText(lockSession)}` : 'ACP 控制台'),
-              h('div', { className: 'acp-hsub' }, lockSession ? sessSub() : data ? `${providers.length} 个 CLI · ${modelsAll} 个模型 · ${loading ? '刷新中…' : data.pending ? '部分信息后台读取中…' : `更新于 ${fmtTime(data.generatedAt).slice(6)}`}` : '正在读取…')),
+              h('div', { className: 'acp-h1' }, mode === 'page' ? tr('ACP 控制台') : lockSession ? `本会话 · ${sessText(lockSession)}` : tr('ACP 控制台')),
+              h('div', { className: 'acp-hsub' }, lockSession ? sessSub() : data ? `${providers.length} 个 CLI · ${modelsAll} 个模型 · ${loading ? tr('刷新中…') : data.pending ? '部分信息后台读取中…' : `更新于 ${fmtTime(data.generatedAt).slice(6)}`}` : tr('正在读取…'))),
             mode !== 'page' && !lockSession ? h(Guard, { name: 'version badge', render: () => h(VersionBadge, { small: true }) }) : null,
             h('span', { className: 'acp-sp' }),
             h(Guard, { name: 'today strip', render: todayStrip, resetKey: data?.generatedAt }),
             inflight.length ? h('span', { className: 'acp-live' }, h('i'), `进行中 ${inflight.length} 轮`) : null),
           h('div', { className: 'acp-ctl' },
             h('div', { className: 'acp-seg', role: 'tablist', 'aria-label': '时间范围' },
-              ...RANGES.map(([v, label]) => h('button', { key: v, type: 'button', role: 'tab', 'aria-selected': !customOn && range === v, className: !customOn && range === v ? 'on' : '', onClick: () => { setCustomOn(false); setRange(v) } }, label)),
-              h('button', { key: 'custom', type: 'button', role: 'tab', 'aria-selected': customOn, className: customOn ? 'on' : '', title: '自定义起止日期', onClick: () => setCustomOn(!customOn) }, '自定义')),
+              ...RANGES.map(([v, l0], _i, _a, label = tr(l0)) => h('button', { key: v, type: 'button', role: 'tab', 'aria-selected': !customOn && range === v, className: !customOn && range === v ? 'on' : '', onClick: () => { setCustomOn(false); setRange(v) } }, label)),
+              h('button', { key: 'custom', type: 'button', role: 'tab', 'aria-selected': customOn, className: customOn ? 'on' : '', title: tr('自定义起止日期'), onClick: () => setCustomOn(!customOn) }, '自定义')),
             customOn ? h(Fragment, null,
               h('input', { type: 'date', className: 'acp-date', value: fromStr, 'aria-label': '开始日期', onChange: (e) => setFromStr(e.target.value) }),
               h('span', { className: 'acp-tt-l' }, '至'),
               h('input', { type: 'date', className: 'acp-date', value: toStr, 'aria-label': '结束日期', onChange: (e) => setToStr(e.target.value) })) : null,
-            h('button', { type: 'button', className: `acp-btn${compare ? ' on' : ''}`, disabled: !customValid && range === '0', title: '与上一个等长周期对比（KPI 环比 + 趋势图灰色虚线）', onClick: () => setCompare(!compare) }, '环比'),
+            h('button', { type: 'button', className: `acp-btn${compare ? ' on' : ''}`, disabled: !customValid && range === '0', title: tr('与上一个等长周期对比（KPI 环比 + 趋势图灰色虚线）'), onClick: () => setCompare(!compare) }, '环比'),
             h('span', { className: 'acp-sp' }),
             lockSession ? null : h('span', { className: 'acp-cfg-wrap' },
               h('button', {
@@ -2823,12 +2834,12 @@ window.__ModuleLoader__.load({
                   h('span', null,
                     h('b', null, discFresh ? `发现 ${discFresh} 个可接入的 CLI` : '还没配置过本机 ACP CLI？'),
                     h('small', null, discFresh ? '点这里查看，按推荐配置一键添加' : '点这里扫描本机，添加或编辑 provider')))) : null),
-            h('button', { type: 'button', className: `acp-btn${compactMode ? ' on' : ''}`, title: '紧凑模式：更小的间距与字号', onClick: () => setCompactMode(!compactMode) }, '紧凑'),
-            h('button', { type: 'button', className: 'acp-btn', title: '生成当前范围的 Markdown 用量报告', onClick: () => { setCopied(false); setReport(weeklyReport({ usage, prev: data?.prev, rangeLabel, modelOf, nameOf, filter, providers })) } }, '一键报告'),
+            h('button', { type: 'button', className: `acp-btn${compactMode ? ' on' : ''}`, title: tr('紧凑模式：更小的间距与字号'), onClick: () => setCompactMode(!compactMode) }, tr('紧凑')),
+            h('button', { type: 'button', className: 'acp-btn', title: tr('生成当前范围的 Markdown 用量报告'), onClick: () => { setCopied(false); setReport(weeklyReport({ usage, prev: data?.prev, rangeLabel, modelOf, nameOf, filter, providers })) } }, '一键报告'),
             h('button', { type: 'button', className: `acp-btn${auto ? ' on' : ''}`, onClick: () => setAuto(!auto), title: '每 15 秒刷新一次' }, auto ? '● 自动刷新' : '○ 自动刷新'),
-            h('button', { type: 'button', className: 'acp-btn', disabled: loading, onClick: load }, loading ? '刷新中…' : '刷新'),
-            h('a', { className: 'acp-btn', href: `${R.csv}?${query()}`, download: '', title: filterOn ? '导出当前范围 + 当前筛选的明细' : '导出当前范围的明细' }, '导出 CSV'),
-            filterOn ? h('a', { className: 'acp-btn', href: `${R.csv}?${customValid ? `range=0&from=${fromMs}&to=${toMs}` : `range=${encodeURIComponent(range)}`}`, download: '' }, '导出全部') : null)),
+            h('button', { type: 'button', className: 'acp-btn', disabled: loading, onClick: load }, loading ? tr('刷新中…') : tr('刷新')),
+            h('a', { className: 'acp-btn', href: `${R.csv}?${query()}`, download: '', title: filterOn ? tr('导出当前范围 + 当前筛选的明细') : tr('导出当前范围的明细') }, tr('导出 CSV')),
+            filterOn ? h('a', { className: 'acp-btn', href: `${R.csv}?${customValid ? `range=0&from=${fromMs}&to=${toMs}` : `range=${encodeURIComponent(range)}`}`, download: '' }, tr('导出全部')) : null)),
         !lockSession ? h('div', { className: 'acp-entries' },
           h('span', { className: 'acp-tt-l' }, '入口'),
           h('label', { title: '在左侧一级侧边栏显示「ACP 洞察」页' },
@@ -2841,7 +2852,7 @@ window.__ModuleLoader__.load({
           cmpVer(data.version, CLIENT_VERSION) > 0
             ? `服务端已经是 v${data.version}，页面还在用旧代码 v${CLIENT_VERSION}（浏览器缓存）。点「刷新页面」即可；还不行再按 ⌘Q 完全退出 DSH 重新打开。`
             : `插件页面是 v${CLIENT_VERSION}，服务端仍在运行 v${data.version}，两边不一致，新功能可能不显示。请按 ⌘Q 完全退出 DSH 再打开（只关窗口不算），然后点「刷新页面」。`,
-          h('button', { type: 'button', className: 'acp-btn', style: { marginLeft: 8, padding: '1px 10px', fontSize: 11 }, onClick: () => { try { window.location.reload() } catch { /* not in a browser */ } } }, '刷新页面')) : null,
+          h('button', { type: 'button', className: 'acp-btn', style: { marginLeft: 8, padding: '1px 10px', fontSize: 11 }, onClick: () => { try { window.location.reload() } catch { /* not in a browser */ } } }, tr('刷新页面'))) : null,
         lockSession && data && !data.usage?.count ? h('div', { className: 'acp-alert', role: 'status', style: { borderColor: 'color-mix(in srgb,var(--acp-in) 40%,transparent)', background: 'color-mix(in srgb,var(--acp-in) 6%,var(--acp-card))', color: 'inherit' } },
           '本会话还没有走过 ACP。只有选用 ACP 渠道的模型（模型选择器里「外部 CLI」分组，写作 provider/model）时，这一轮才会记入 ACP 统计；用其他渠道的模型聊天不会出现在这里。') : null,
         hostStale ? h('div', { className: 'acp-alert', style: { borderColor: 'color-mix(in srgb,var(--acp-warn) 45%,transparent)', background: 'color-mix(in srgb,var(--acp-warn) 6%,var(--acp-card))', color: 'var(--acp-warn)' } },
@@ -2857,22 +2868,22 @@ window.__ModuleLoader__.load({
           h('div', { className: 'acp-kpis' },
             h(Kpi, { label: '接入 CLI', value: `${enabled}`, unit: `/ ${providers.length}`, sub: `${healthy} 个正常${enabled - healthy > 0 ? ` · ${enabled - healthy} 个需关注` : ''}`, color: '#8b5cf6' },
               h('div', { className: 'acp-dots' }, ...providers.map((p) => h('span', { key: p.id, title: p.statusText }, h('i', { style: { background: p.enabled ? colorOf(p.id) : 'var(--acp-b2)' } }), short(p.displayName))))),
-            h(Kpi, { label: '可用模型', value: `${modelsOn}`, unit: `/ ${modelsAll}`, sub: modelsAll - modelsOn ? `已停用 ${modelsAll - modelsOn} 个` : '全部启用', color: '#0ea5e9' },
+            h(Kpi, { label: '可用模型', value: `${modelsOn}`, unit: `/ ${modelsAll}`, sub: modelsAll - modelsOn ? `已停用 ${modelsAll - modelsOn} 个` : tr('全部启用'), color: '#0ea5e9' },
               h('div', { className: 'acp-meter', style: { '--pc': '#0ea5e9', marginTop: 10 } }, h('i', { style: { width: `${modelsAll ? (modelsOn / modelsAll) * 100 : 0}%` } }))),
             h(Kpi, { label: `轮次 · ${rangeLabel}`, value: n0(t.turns), sub: `失败 ${n0(t.failed)} · 中断 ${n0(t.aborted)} · 进程 ${live}/${warm}`, color: num(t.turns) ? sColor : '#10b981',
               ring: num(t.turns) ? h(Ring, { value: success, label: `${success}%`, color: sColor }) : null },
               multi ? h(Spark, { values: days.map((d) => num(d.turns)), color: '#10b981' }) : null),
-            h(Kpi, { label: '输入 Token', value: compact(t.inputTokens), sub: num(t.cacheReadTokens) ? `缓存读 ${compact(t.cacheReadTokens)}` : `平均 ${compact(num(t.inputTokens) / Math.max(1, num(t.turns)))} / 轮`, color: C_IN },
+            h(Kpi, { label: tr('输入 Token'), value: compact(t.inputTokens), sub: num(t.cacheReadTokens) ? `缓存读 ${compact(t.cacheReadTokens)}` : `平均 ${compact(num(t.inputTokens) / Math.max(1, num(t.turns)))} / 轮`, color: C_IN },
               multi ? h(Spark, { values: days.map((d) => num(d.inputTokens)), color: C_IN }) : null),
-            h(Kpi, { label: '输出 Token', value: compact(t.outputTokens), sub: `平均 ${compact(num(t.outputTokens) / Math.max(1, num(t.turns)))} / 轮`, color: C_OUT },
+            h(Kpi, { label: tr('输出 Token'), value: compact(t.outputTokens), sub: `平均 ${compact(num(t.outputTokens) / Math.max(1, num(t.turns)))} / 轮`, color: C_OUT },
               multi ? h(Spark, { values: days.map((d) => num(d.outputTokens)), color: C_OUT }) : null),
-            h(Kpi, { label: '平均耗时', value: num(t.turns) ? dur(num(t.ms) / num(t.turns)) : '-', sub: `P50 ${dur(usage.latency?.p50)} · P90 ${dur(usage.latency?.p90)}`, color: C_TIME },
+            h(Kpi, { label: tr('平均耗时'), value: num(t.turns) ? dur(num(t.ms) / num(t.turns)) : '-', sub: `P50 ${dur(usage.latency?.p50)} · P90 ${dur(usage.latency?.p90)}`, color: C_TIME },
               multi ? h(Spark, { values: days.map((d) => (d.turns ? num(d.ms) / d.turns : 0)), color: C_TIME }) : null)),
           data?.prev ? (() => {
             const pv = data.prev.total ?? {}
             const item = (label, cur, old, tone) => {
               const x = num(cur), y = num(old)
-              if (!y) return h('span', { key: label }, label, ' ', h('b', null, x ? '新增' : '持平'))
+              if (!y) return h('span', { key: label }, label, ' ', h('b', null, x ? tr('新增') : tr('持平')))
               const d = Math.round(((x - y) / y) * 100)
               const cls = d === 0 || tone === 'neutral' ? '' : (d > 0) === (tone === 'goodUp') ? 'up' : 'dn'
               return h('span', { key: label }, label, ' ', h('b', { className: cls }, `${d > 0 ? '+' : ''}${d}%`))
@@ -2889,7 +2900,7 @@ window.__ModuleLoader__.load({
           h('div', { className: 'acp-grid' },
             multi ? h(DailyTrendCard, { days, recent: usage.recent, colorOf, nameOf, modelOf, type: chartType, dim: chartDim, onType: setChartType, onDim: setChartDim, prevValues, onDayClick: openDrill, drillPanel, card: fold('trend') })
               : h(Card, { className: 's8', title: '今日时段分布', ...fold('trend') }, h(HourChart, { hours: usage.hours ?? [], tall: true })),
-            h(Card, { className: 's4', title: '提供方占比', sub: '按 Token · 点击筛选', ...fold('share') },
+            h(Card, { className: 's4', title: tr('提供方占比'), sub: '按 Token · 点击筛选', ...fold('share') },
               share.some((s) => s.value > 0) ? h(Donut, { items: share, center: compact(tokOf(t)), sub: 'Token 合计', onPick: pickProvider }) : h(Empty, { text: '暂无用量' }))),
 
           h('div', { className: 'acp-grid' },
@@ -2952,13 +2963,13 @@ window.__ModuleLoader__.load({
           h('div', { className: 'acp-grid' },
             h(QuotaCard, { providers, colorOf, nameOf, card: fold('quota'), busy: busy === 'quota', onRefresh: refreshQuota })),
           h('div', { className: 'acp-grid' },
-            h(Card, { className: usage.errors.length ? 's7' : 's12', title: '按模型', sub: '点击行筛选全页', ...fold('bymodel') },
+            h(Card, { className: usage.errors.length ? 's7' : 's12', title: tr('按模型'), sub: '点击行筛选全页', ...fold('bymodel') },
               usage.byModel.length ? h('div', { className: 'acp-scroll' }, h('table', { className: 'acp-table' },
                 h('thead', null, h('tr', null, ...['模型', '轮次', '成功率', '输入', '输出', '平均耗时', '最近'].map((x, i) => h('th', { key: x, className: i >= 1 && i <= 5 ? 'num' : undefined }, x)))),
                 h('tbody', null, ...usage.byModel.map((m) => {
                   const s = pctN(m.ok, m.turns)
                   const active = filter.provider === m.provider && filter.model === m.model
-                  return h('tr', { key: `${m.provider}/${m.model}`, className: `click${active ? ' sel' : ''}`, title: active ? '点击取消筛选' : '点击让全页只看这个模型', onClick: () => pickModel(m.provider, m.model) },
+                  return h('tr', { key: `${m.provider}/${m.model}`, className: `click${active ? ' sel' : ''}`, title: active ? '点击取消筛选' : tr('点击让全页只看这个模型'), onClick: () => pickModel(m.provider, m.model) },
                     h('td', { title: `${m.provider}/${m.model}` }, h(Prov, { color: colorOf(m.provider), name: nameOf(m.provider), model: modelOf(m.provider, m.model) })),
                     h('td', { className: 'num' }, n0(m.turns)),
                     h('td', { className: 'num' }, h(Chip, { kind: s >= 90 ? 'ok' : s >= 60 ? 'warn' : 'fail' }, pct(m.ok, m.turns))),
@@ -2966,7 +2977,7 @@ window.__ModuleLoader__.load({
                     h('td', { className: 'num' }, `${compact(m.outputTokens)}${star(m)}`),
                     h('td', { className: 'num' }, dur(m.ms / Math.max(1, m.turns))),
                     h('td', null, ago(m.lastAt)))
-                })))) : h(Empty, { text: '所选范围内还没有调用记录' })),
+                })))) : h(Empty, { text: tr('所选范围内还没有调用记录') })),
             h(ErrorCard, { usage, nameOf, modelOf, card: fold('errors') })),
 
           h(Card, { title: '最近调用', sub: usage.recent.length ? `最近 ${usage.recent.length} 条 · 点会话看统计` : '', ...fold('recent') },
@@ -3017,7 +3028,7 @@ window.__ModuleLoader__.load({
                 h('button', { type: 'button', className: 'acp-btn', onClick: () => setReport(null) }, '关闭')))) : null) : null)
     }
 
-    function Title() { return h('span', null, zh.title) }
+    function Title() { useStore(langStore); return h('span', null, isEn() ? en.title : zh.title) }
     function Icon(props) {
       return h('svg', { viewBox: '0 0 24 24', width: 24, height: 24, fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round', ...props },
         h('rect', { x: 3, y: 4, width: 18, height: 14, rx: 2 }),
@@ -3170,7 +3181,7 @@ section[data-menu-group][data-acp-pc] button[role="menuitemradio"][data-highligh
           h('div', { className: 'acp-ct' },
             h('span', null, `/acp · ${sess(sessionId)}`),
             h('span', { className: 'sub' }, '本会话 ACP 用量 · 范围默认全部历史'),
-            h('button', { type: 'button', className: 'acp-btn', onClick: close }, '关闭 Esc')),
+            h('button', { type: 'button', className: 'acp-btn', onClick: close }, tr('关闭 Esc'))),
           h(Console, { mode: 'session', lockSession: sessionId }),
           h('div', { className: 'acp-tools', style: { marginTop: 10 } },
             h('button', { type: 'button', className: 'acp-btn primary', onClick: () => { openConsoleTab(); close() } }, '在右侧栏打开 ACP 控制台'),
@@ -3189,10 +3200,25 @@ section[data-menu-group][data-acp-pc] button[role="menuitemradio"][data-highligh
       weeklyReport, dayDrill, sessionDistView, SessionDistCard,
       InsightsPage, AcpOverlay, AcpModal, slashSource,
       VersionBadge, initVer, verStore, saveVer, quietFor, VER_KEY, LS_KEY,
+      langStore, tr, zhEn, EN,
       apply(ctx) {
         CTX = ctx
         ctx.effect(() => () => { if (CTX === ctx) CTX = null }, 'llm-acp: context handle')
         ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'llm-acp: locale')
+        // UI language follows DSH's active locale; registrations also notify, so only real switches re-render.
+        ctx.effect(() => {
+          const loc = ctx.locale
+          const sync = () => {
+            let a = ''
+            try { a = String(loc?.getLocale?.()?.active ?? '') } catch { /* no locale runtime */ }
+            const next = a === '' || /^zh/i.test(a) ? 'zh' : 'en'
+            if (langStore.get() !== next) langStore.set(next)
+          }
+          sync()
+          let off
+          try { off = loc?.subscribe?.(sync) } catch { /* no subscribe */ }
+          return () => { try { off?.() } catch { /* already gone */ } }
+        }, 'llm-acp: ui language')
         const slotInject = (name, meta, Component) => {
           try { return ctx.slots.inject(name, () => ctx.slots.register({ name, locale: NS, ...meta }, Component)) }
           catch (e) { console.warn(`llm-acp: slot ${name} unavailable`, e); return undefined }
@@ -3221,8 +3247,8 @@ section[data-menu-group][data-acp-pc] button[role="menuitemradio"][data-highligh
           ctx.effect(() => ctx.sidebarRightTabs.register({
             id: TAB_ID,
             kind: KIND,
-            title: () => zh.title,
-            guide: [{ id: 'open', order: 61, title: () => zh.title, description: () => zh.description, icon: Icon }],
+            title: () => (isEn() ? en.title : zh.title),
+            guide: [{ id: 'open', order: 61, title: () => (isEn() ? en.title : zh.title), description: () => (isEn() ? en.description : zh.description), icon: Icon }],
           }), 'llm-acp: tab type')
         } catch (e) { console.warn('llm-acp: tab type unavailable', e) }
         try {
