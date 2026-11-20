@@ -364,8 +364,8 @@ CLI 不是每次都要配置，所以 **本机 ACP CLI** 卡片默认收起。AC
 | `sessionIdleMs` | 1800000 | 热会话空闲多久后回收（30 分钟：同一会话里隔一会儿再提问也不丢 CLI 自己的上下文） |
 | `maxSessions` | 8 | 每个 provider 最多同时保持几个热会话（LRU）。**成员数超过它就会抖动**：每轮都要回收一个别人正想用的热会话，等于每轮都冷启动；发生回收时会打一条 `cache/evict` 警告，看到它就调大这个值 |
 | `modelDiscoveryBackoffMs` | 60000 | 模型发现失败后的退避窗口（窗口内不再重启 CLI）；整数 ≥ 0，0 表示不退避 |
-| `promptRetries` | 1 | 仅当本轮**还没产出任何文本**且失败属限流/服务端/超时/传输时才重试；已产出绝不重放。0–3 |
-| `retryDelayMs` | 2000 | 退避间隔基数：限流用**指数退避**（`×2^n` ±10% 抖动，封顶 60s）并优先采用 CLI 文本里的 `Retry-After`；其余瞬时错误用线性退避（`×(n+1)`）。详见下方「429 与异常处理」 |
+| `promptRetries` | 2 | 仅当本轮**还没产出任何文本**且失败属限流/服务端/超时/传输时才重试；已产出绝不重放。0–3 |
+| `retryDelayMs` | 2000 | 退避间隔基数：限流用**指数退避**（`×2^n` ±10% 抖动，封顶 60s）并优先采用 CLI 文本里的 `Retry-After`；服务端/超时/传输错误按 `×3^n` 递增（默认约 2s、6s、18s，±10% 抖动，封顶 30s）。详见下方「429 与异常处理」 |
 | `resumeSessions` | true | CLI 声明 `loadSession` 时，进程被回收/挤掉或 DSH 重启后用 `session/load` 接回 CLI **自己的原生会话**，只发新增消息；设 false 退回重发整段 transcript |
 | `mode` | 不设 | 新建/接回会话后切到 CLI 提供的某个 ACP mode，例如 kiro 的 `kiro_planner`、codebuddy 的 `plan`。id 不存在会启动失败并列出可选值。**`permission: reject` 永远优先**，mode 不能绕过它 |
 | `images` | true | CLI 声明 `promptCapabilities.image` 时，**向宿主报告该模型支持图片**（`inputModalities: [text, image]`，否则宿主在界面上就拒收图片），并把新消息里的图片作为真正的 ACP 图片块发过去；读不到就退回文字占位。能力第一次查询时问一次 CLI，之后缓存；CLI 起不来时按 `modelDiscoveryBackoffMs` 退避，不会每轮都重启它。发出去的图片在文字记录里标为"attached as image N"，没发出去的才标"not visible" |
@@ -378,11 +378,11 @@ CLI 不是每次都要配置，所以 **本机 ACP CLI** 卡片默认收起。AC
 模型调用失败时，插件按下面的链路处理。**只重试「还没吐出任何文本」的整轮失败**——一旦开始输出（可能已经跑过 CLI 工具、产生副作用）就绝不重放。
 
 1. **分类**（`lib/errors.js`）：把 CLI 报错归一化成稳定 code。`429 / rate limit / too many requests / overloaded / throttled / capacity` → `RATE_LIMIT`；`5xx / service unavailable / upstream failure / bad gateway` → `SERVER`；`401/403 / unauthorized` → `AUTH`；`quota / 余额不足 / usage limit` → `QUOTA_EXCEEDED`。后两者是**永久错误，不重试**。
-2. **重试**（`promptRetries`，默认 1，最多 3）：仅 `RATE_LIMIT / SERVER / TIMEOUT / TRANSPORT` 这几类瞬时错误、且本轮无任何输出时才重试。
+2. **重试**（`promptRetries`，默认 2，最多 3）：仅 `RATE_LIMIT / SERVER / TIMEOUT / TRANSPORT` 这几类瞬时错误、且本轮无任何输出时才重试。
 3. **退避**（`retryDelayMs`）：
    - 限流走**指数退避** `base × 2^n`，带 ±10% 抖动避免并发成员同时重试，封顶 60s；若错误文本带 `Retry-After: 30`、`retry after 30s` / `retry in 500ms`，优先采用（封顶 120s）。
-   - 服务端 / 超时 / 传输错误保持线性退避 `base × (n+1)`，封顶 30s。
-4. **耗尽**：重试用尽后以一条 finish 结束，消息写明「模型调用触发限流（429），自动重试 N 次后仍失败」这类中文提示；原始 `code` 保留，控制台「错误分布」卡片仍按 `code` 统计，`RATE_LIMIT` 失败照常计入。
+   - 服务端 / 超时 / 传输错误按 `base × 3^n` 递增（默认约 2s、6s、18s），带同样的 ±10% 抖动，封顶 30s，给上游短暂中断留出恢复时间。`Error streaming response` 也归为 `SERVER`。
+4. **耗尽**：重试用尽后以一条 finish 结束，消息写明「模型调用触发限流（429），自动重试 N 次后仍失败」或「上游模型服务临时异常……不是插件故障，稍后直接重发即可」这类中文提示；原始 `code` 保留，控制台「错误分布」卡片仍按 `code` 统计，`RATE_LIMIT` 失败照常计入。
 
 想更激进就调大 `promptRetries` / `retryDelayMs`。限流期间反复冷启动代价高，优先调大退避而不是重试次数。控制台里失败轮次会带 code 标签，点「错误分布」可看每类错误的次数与最近详情。
 

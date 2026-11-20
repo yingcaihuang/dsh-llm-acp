@@ -9,6 +9,19 @@ window.__ModuleLoader__.load({
     const React = require('react')
     const h = React.createElement
     const { Fragment, useCallback, useEffect, useRef, useState } = React
+    // Kept equal to package.json "version" (test/version-sync.mjs). The console compares it with the
+    // host half's version: a mismatch means DSH was not fully restarted after an update (or the page is cached).
+    const CLIENT_VERSION = '0.2.3'
+    const CallRender = ({ render }) => render() ?? null
+    // Error boundary for an optional piece of the console: a crash hides that piece only, never the
+    // whole console. A new resetKey (the next data refresh) gives it another try.
+    class Guard extends React.Component {
+      constructor(props) { super(props); this.state = { failed: false } }
+      static getDerivedStateFromError() { return { failed: true } }
+      componentDidCatch(error) { try { console.warn(`[dsh-llm-acp] ${this.props.name ?? 'section'} hidden after a render error:`, error) } catch { /* logging is best effort */ } }
+      componentDidUpdate(prev) { if (this.state.failed && prev.resetKey !== this.props.resetKey) this.setState({ failed: false }) }
+      render() { return this.state.failed ? null : h(CallRender, { render: this.props.render }) }
+    }
 
     const NS = 'llmAcp'
     const TAB_ID = 'dsh-llm-acp'
@@ -926,7 +939,7 @@ window.__ModuleLoader__.load({
     ]
     const VIA_OPTS = [['args', '命令行 --model'], ['configOption', 'ACP 切换']]
     const PROVIDER_ID_RE = /^[A-Za-z0-9][\w.-]{0,63}$/
-    const FALLBACK_DEFAULTS = { modelArgs: ['--model', '{model}'], permission: 'allow', modelVia: 'args', startupTimeoutMs: 60000, promptTimeoutMs: 1800000, idleTimeoutMs: 600000, reuseSessions: true, maxSessions: 8, resumeSessions: true, images: true, promptRetries: 1, contextWindow: 200000, modelDiscoveryBackoffMs: 60000, modelDiscoveryMaxBackoffMs: 1800000, rateInName: true, askUser: false }
+    const FALLBACK_DEFAULTS = { modelArgs: ['--model', '{model}'], permission: 'allow', modelVia: 'args', startupTimeoutMs: 60000, promptTimeoutMs: 1800000, idleTimeoutMs: 600000, reuseSessions: true, maxSessions: 8, resumeSessions: true, images: true, promptRetries: 2, contextWindow: 200000, modelDiscoveryBackoffMs: 60000, modelDiscoveryMaxBackoffMs: 1800000, rateInName: true, askUser: false }
     const FORM_KEYS = new Set(['displayName', 'command', 'args', 'permission', 'modelVia', 'modelArgs', 'env', 'startupTimeoutMs', 'promptTimeoutMs', 'idleTimeoutMs', 'maxSessions', 'promptRetries', 'contextWindow', 'reuseSessions', 'resumeSessions', 'images', 'models', 'mode',
       'effort', 'askUser', 'modelDiscoveryBackoffMs', 'modelDiscoveryMaxBackoffMs', 'rateInName'])
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -2473,6 +2486,15 @@ window.__ModuleLoader__.load({
       const filterOn = Object.keys(filter).length > 0
       // Header strip: today from local midnight whatever the range, following the cross-filter.
       const tdy = data?.today
+      // /acp: say plainly when this session has no ACP turn, so chatting on a non-ACP model is not read as lost stats.
+      const sessSub = () => {
+        if (!data) return '正在读取…'
+        const u = data.usage
+        if (!u?.count) return '本会话还没有 ACP 调用记录'
+        const last = u.recent?.[0]
+        return `所有卡片已锁定到这个会话 · 最近 ACP 调用 ${ago(u.total?.lastAt)}${last ? ` · ${last.provider}/${last.model ?? 'default'}` : ''}`
+      }
+      const verStale = !!data && typeof data.version === 'string' && data.version !== '?' && data.version !== CLIENT_VERSION
       const todayStrip = () => {
         if (!tdy || lockSession) return null
         const goToday = () => { setCustomOn(false); setRange('today') }
@@ -2560,9 +2582,9 @@ window.__ModuleLoader__.load({
             h('div', { className: 'acp-logo' }, h(Icon, { width: 18, height: 18, strokeWidth: 1.8 })),
             h('div', null,
               h('div', { className: 'acp-h1' }, mode === 'page' ? 'ACP 控制台' : lockSession ? `本会话 · ${sessText(lockSession)}` : 'ACP 控制台'),
-              h('div', { className: 'acp-hsub' }, lockSession ? '所有卡片已锁定到这个会话' : data ? `${providers.length} 个 CLI · ${modelsAll} 个模型 · ${loading ? '刷新中…' : data.pending ? '部分信息后台读取中…' : `更新于 ${fmtTime(data.generatedAt).slice(6)}`}` : '正在读取…')),
+              h('div', { className: 'acp-hsub' }, lockSession ? sessSub() : data ? `${providers.length} 个 CLI · ${modelsAll} 个模型 · ${loading ? '刷新中…' : data.pending ? '部分信息后台读取中…' : `更新于 ${fmtTime(data.generatedAt).slice(6)}`}` : '正在读取…')),
             h('span', { className: 'acp-sp' }),
-            todayStrip(),
+            h(Guard, { name: 'today strip', render: todayStrip, resetKey: data?.generatedAt }),
             inflight.length ? h('span', { className: 'acp-live' }, h('i'), `进行中 ${inflight.length} 轮`) : null),
           h('div', { className: 'acp-ctl' },
             h('div', { className: 'acp-seg', role: 'tablist', 'aria-label': '时间范围' },
@@ -2605,6 +2627,10 @@ window.__ModuleLoader__.load({
             h('input', { type: 'checkbox', checked: !!entries.slash, onChange: () => savePrefs({ entries: { ...entries, slash: !entries.slash } }) }), '/acp 命令'),
           h('label', { title: '输入框的模型选择列表里，每个渠道用不同颜色区分，渠道名放大加粗（对所有渠道生效，不只 ACP）' },
             h('input', { type: 'checkbox', checked: !!entries.pickerColor, onChange: () => savePrefs({ entries: { ...entries, pickerColor: !entries.pickerColor } }) }), '模型列表按渠道着色')) : null,
+        verStale ? h('div', { className: 'acp-alert', role: 'status', style: { borderColor: 'color-mix(in srgb,var(--acp-warn) 45%,transparent)', background: 'color-mix(in srgb,var(--acp-warn) 6%,var(--acp-card))', color: 'var(--acp-warn)' } },
+          `插件页面是 v${CLIENT_VERSION}，服务端仍在运行 v${data.version}，两边不一致，新功能可能不显示。请按 ⌘Q 完全退出 DSH 再打开（只关窗口不算），然后在本页按 ⌘⇧R 强制刷新。`) : null,
+        lockSession && data && !data.usage?.count ? h('div', { className: 'acp-alert', role: 'status', style: { borderColor: 'color-mix(in srgb,var(--acp-in) 40%,transparent)', background: 'color-mix(in srgb,var(--acp-in) 6%,var(--acp-card))', color: 'inherit' } },
+          '本会话还没有走过 ACP。只有选用 ACP 渠道的模型（模型选择器里「外部 CLI」分组，写作 provider/model）时，这一轮才会记入 ACP 统计；用其他渠道的模型聊天不会出现在这里。') : null,
         hostStale ? h('div', { className: 'acp-alert', style: { borderColor: 'color-mix(in srgb,var(--acp-warn) 45%,transparent)', background: 'color-mix(in srgb,var(--acp-warn) 6%,var(--acp-card))', color: 'var(--acp-warn)' } },
           '自定义区间 / 交叉筛选 / 环比需要更新后的宿主：请重启一次 DSH 生效。当前展示的是未应用这些选项的数据。') : null,
         err ? h('div', { className: 'acp-alert', role: 'alert' }, err, data ? null : h('div', { className: 'acp-note' }, '确认插件已加载最新版并重启过 DSH；接口 /api/llm-acp.dashboard 由宿主半侧注册。')) : null,
