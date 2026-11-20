@@ -11,7 +11,7 @@ window.__ModuleLoader__.load({
     const { Fragment, useCallback, useEffect, useRef, useState } = React
     // Kept equal to package.json "version" (test/version-sync.mjs). The console compares it with the
     // host half's version: a mismatch means DSH was not fully restarted after an update (or the page is cached).
-    const CLIENT_VERSION = '0.2.4'
+    const CLIENT_VERSION = '0.2.5'
     const CallRender = ({ render }) => render() ?? null
     // Error boundary for an optional piece of the console: a crash hides that piece only, never the
     // whole console. A new resetKey (the next data refresh) gives it another try.
