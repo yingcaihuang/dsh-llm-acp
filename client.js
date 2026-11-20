@@ -41,10 +41,47 @@ window.__ModuleLoader__.load({
       if (!nav || typeof nav.openBundle !== 'function') return false
       try { nav.openBundle(PKG_NAME); return true } catch { return false }
     }
+    // Update-reminder state shared by every badge (insights page + sidebar), kept in localStorage:
+    // seen = last version that ran in this browser (drives the one-time「已升级」notice),
+    // skip = a version the user chose to skip, snooze = { v, until } for「稍后提醒」.
+    // upgraded ({ from, to }) lives in memory only, so the notice shows once.
+    const VER_KEY = 'dsh-llm-acp.version-state'
+    const SNOOZE_MS = 24 * 3600_000
+    const readVer = () => {
+      try { const v = typeof localStorage !== 'undefined' && JSON.parse(localStorage.getItem(VER_KEY)); return v && typeof v === 'object' ? v : {} } catch { return {} }
+    }
+    const verStore = createStore({ ...readVer(), upgraded: null })
+    const saveVer = (patch) => {
+      const next = { ...verStore.get(), ...patch }
+      verStore.set(next)
+      try { const { upgraded: _u, ...keep } = next; localStorage.setItem(VER_KEY, JSON.stringify(keep)) } catch { /* storage unavailable */ }
+    }
+    let verInited = false
+    /** Once per page load: record this version; flag an upgrade when an older version ran here before. */
+    function initVer() {
+      if (verInited) return
+      verInited = true
+      const st = verStore.get()
+      if (st.seen === CLIENT_VERSION) return
+      const from = typeof st.seen === 'string' ? st.seen : ''
+      // 0.2.5 and older kept no version record: existing console prefs show the plugin ran here before.
+      let before = from !== ''
+      if (!before) { try { before = localStorage.getItem(LS_KEY) != null } catch { /* storage unavailable */ } }
+      const up = before && (from === '' || cmpVer(CLIENT_VERSION, from) > 0)
+      saveVer({ seen: CLIENT_VERSION })
+      if (up) verStore.set({ ...verStore.get(), upgraded: { from, to: CLIENT_VERSION } })
+    }
+    /** The user asked not to be reminded about version v (skipped, or snoozed and still inside the window). */
+    const quietFor = (st, v) => st.skip === v || (st.snooze?.v === v && Date.now() < Number(st.snooze.until))
+    const NotesList = ({ notes }) => (Array.isArray(notes) && notes.length
+      ? h('ul', { className: 'acp-notes' }, notes.map((n, i) => h('li', { key: i }, n)))
+      : h('div', { className: 'acp-notes none' }, '这个版本没有附带更新说明'))
     function VersionBadge({ small = false }) {
       const [info, setInfo] = useState(null)
       const [checking, setChecking] = useState(false)
-      const [help, setHelp] = useState(false)
+      const [panel, setPanel] = useState('') // '' | 'notes' | 'help'
+      useStore(verStore)
+      const st = verStore.get()
       const check = useCallback(async (force) => {
         setChecking(true)
         try { setInfo(await getJson(`${R.latest}${force ? '?force=1' : ''}`)) }
@@ -52,6 +89,7 @@ window.__ModuleLoader__.load({
         finally { setChecking(false) }
       }, [])
       useEffect(() => {
+        initVer()
         check(false)
         const t = setInterval(() => check(false), LATEST_POLL_MS)
         return () => clearInterval(t)
@@ -59,29 +97,51 @@ window.__ModuleLoader__.load({
       const latest = info?.latest ?? null
       // Compared with what this page runs: a stale host half (not restarted) is the other alert's job.
       const newer = !!latest && cmpVer(latest, CLIENT_VERSION) > 0
+      const quiet = newer && quietFor(st, latest)
       const dev = info?.install === 'link'
       const checkedTitle = info?.checkedAt ? `\n上次检查：${fmtTime(info.checkedAt)}${info.registry ? ` · ${info.registry.replace(/^https?:\/\//, '').replace(/\/$/, '')}` : ''}` : ''
       const verTitle = `当前插件版本 v${CLIENT_VERSION}${info?.current && info.current !== CLIENT_VERSION ? `（服务端 v${info.current}）` : ''}${latest ? `\n线上最新 v${latest}` : ''}${checkedTitle}\n点击重新检查线上版本`
-      const onUpgrade = () => { if (dev || !openUpdate()) setHelp(!help) }
+      const toggle = (p) => setPanel(panel === p ? '' : p)
+      const onUpgrade = () => { if (dev || !openUpdate()) toggle('help') }
+      const later = () => { saveVer({ snooze: { v: latest, until: Date.now() + SNOOZE_MS } }); setPanel('') }
+      const skip = () => { saveVer({ skip: latest }); setPanel('') }
+      const quietTitle = quiet ? `${st.skip === latest ? `已跳过 v${latest}，出下一个版本时再提醒` : `已设为稍后提醒，${fmtTime(st.snooze.until)} 后再提醒`}\n点击去升级` : ''
+      const up = st.upgraded && st.upgraded.to === CLIENT_VERSION ? st.upgraded : null
       return h('span', { className: `acp-ver-wrap${small ? ' small' : ''}` },
         h('button', { type: 'button', className: 'acp-ver', title: verTitle, disabled: checking, onClick: () => check(true) },
           `v${CLIENT_VERSION}`, checking ? h('i', { className: 'spin', 'aria-hidden': true }) : null),
-        newer
-          ? h('button', { type: 'button', className: `acp-upd${dev ? ' dev' : ''}`, onClick: onUpgrade, title: dev ? `线上已有 v${latest}；当前是 link: 开发安装，没有更新按钮` : `线上已有 v${latest}，点击打开插件详情页，点右上角「更新到 ${latest}」` },
-            h('span', { className: 'ring', 'aria-hidden': true }),
-            h('span', { className: 'dot', 'aria-hidden': true }),
-            small ? `新版本 v${latest}` : `发现新版本 v${latest} · ${dev ? '开发安装' : '去升级'}`,
-            h('span', { className: 'arr', 'aria-hidden': true }, '→'))
-          : latest
-            ? h('span', { className: 'acp-ver-ok', title: `已是最新版本${checkedTitle}` }, '已是最新')
-            : info?.error
-              ? h('button', { type: 'button', className: 'acp-ver-err', title: `线上版本查询失败：${info.error}\n点击重试`, onClick: () => check(true) }, '线上版本查询失败')
-              : null,
-        help && newer ? h('div', { className: 'acp-upd-help', role: 'status' },
+        newer && !quiet
+          ? h(Fragment, null,
+            h('button', { type: 'button', className: `acp-upd${dev ? ' dev' : ''}`, onClick: onUpgrade, title: dev ? `线上已有 v${latest}；当前是 link: 开发安装，没有更新按钮` : `线上已有 v${latest}，点击打开插件详情页，点右上角「更新到 ${latest}」` },
+              h('span', { className: 'ring', 'aria-hidden': true }),
+              h('span', { className: 'dot', 'aria-hidden': true }),
+              small ? `新版本 v${latest}` : `发现新版本 v${latest} · ${dev ? '开发安装' : '去升级'}`,
+              h('span', { className: 'arr', 'aria-hidden': true }, '→')),
+            h('span', { className: 'acp-upd-acts' },
+              h('button', { type: 'button', onClick: () => toggle('notes'), 'aria-expanded': panel === 'notes' }, small ? '说明' : '更新内容'),
+              h('button', { type: 'button', onClick: later, title: '24 小时内不再显示动效提醒' }, small ? '稍后' : '稍后提醒'),
+              h('button', { type: 'button', onClick: skip, title: `不再提醒 v${latest}，出下一个版本时再提醒` }, small ? '跳过' : '跳过此版本')))
+          : newer
+            ? h('button', { type: 'button', className: 'acp-upd-quiet', title: quietTitle, onClick: onUpgrade }, `v${latest} 可更新`)
+            : latest
+              ? h('span', { className: 'acp-ver-ok', title: `已是最新版本${checkedTitle}` }, '已是最新')
+              : info?.error
+                ? h('button', { type: 'button', className: 'acp-ver-err', title: `线上版本查询失败：${info.error}\n点击重试`, onClick: () => check(true) }, '线上版本查询失败')
+                : null,
+        panel === 'notes' && newer ? h('div', { className: 'acp-upd-help', role: 'status' },
+          h('div', { className: 'ttl' }, `v${latest} 更新内容`),
+          h(NotesList, { notes: info?.notes }),
+          h('button', { type: 'button', className: 'acp-link', onClick: onUpgrade }, dev ? '怎么升级' : '去升级'),
+          h('button', { type: 'button', className: 'acp-link', onClick: () => setPanel('') }, '收起')) : null,
+        panel === 'help' && newer ? h('div', { className: 'acp-upd-help', role: 'status' },
           dev
             ? '当前是 link: 本地开发安装，插件页不会出现更新按钮。在插件目录执行 git pull，再到插件页把开关关掉再打开（或 ⌘Q 重启 DSH）。'
             : `请到 设置 → 插件 → 已安装 → ACP CLI 模型，点右上角「更新到 ${latest}」。更新后按 ⌘Q 完全退出 DSH 再打开，并在本页 ⌘⇧R 强制刷新。`,
-          h('button', { type: 'button', className: 'acp-link', onClick: () => setHelp(false) }, '知道了')) : null)
+          h('button', { type: 'button', className: 'acp-link', onClick: () => setPanel('') }, '知道了')) : null,
+        up ? h('div', { className: 'acp-upgraded', role: 'status' },
+          h('div', { className: 'ttl' }, `🎉 已升级到 v${up.to}${up.from ? `（原 v${up.from}）` : ''}`),
+          info && info.current === CLIENT_VERSION ? h(NotesList, { notes: info.currentNotes }) : null,
+          h('button', { type: 'button', className: 'acp-link', onClick: () => verStore.set({ ...verStore.get(), upgraded: null }) }, '知道了')) : null)
     }
 
     const NS = 'llmAcp'
@@ -555,6 +615,16 @@ window.__ModuleLoader__.load({
 .acp-ver-wrap.small .acp-upd{font-size:11px;padding:2px 9px 2px 8px}
 .acp-upd-help{flex-basis:100%;font-size:11.5px;line-height:1.5;padding:6px 10px;border-radius:8px;border:1px solid color-mix(in srgb,var(--acp-in) 35%,transparent);background:color-mix(in srgb,var(--acp-in) 7%,var(--acp-card))}
 .acp-upd-help .acp-link{margin-left:6px}
+.acp-upd-help .ttl,.acp-upgraded .ttl{font-weight:700;margin-bottom:3px}
+.acp-upd-acts{display:inline-flex;align-items:center;gap:2px}
+.acp-upd-acts button{font:inherit;font-size:11px;color:var(--acp-muted);background:none;border:0;padding:2px 6px;border-radius:6px;cursor:pointer}
+.acp-upd-acts button:hover{color:var(--acp-in);background:color-mix(in srgb,var(--acp-in) 8%,transparent)}
+.acp-upd-quiet{font:inherit;font-size:11px;font-weight:600;padding:2px 9px;border-radius:999px;cursor:pointer;color:var(--acp-in);background:color-mix(in srgb,var(--acp-in) 8%,var(--acp-card));border:1px solid color-mix(in srgb,var(--acp-in) 35%,transparent)}
+.acp-notes{margin:2px 0 4px;padding-left:18px}
+.acp-notes li{margin:1px 0}
+.acp-notes.none{padding-left:0;color:var(--acp-muted)}
+.acp-upgraded{flex-basis:100%;font-size:11.5px;line-height:1.5;padding:7px 10px;border-radius:8px;border:1px solid color-mix(in srgb,var(--acp-ok) 40%,transparent);background:color-mix(in srgb,var(--acp-ok) 8%,var(--acp-card));animation:acp-upd-in .35s ease-out}
+@keyframes acp-upd-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
 @keyframes acp-upd-flow{to{background-position:-220% 0}}
 @keyframes acp-upd-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
 @keyframes acp-upd-ring{0%{opacity:.9;transform:scale(1)}100%{opacity:0;transform:scale(1.35,1.6)}}
@@ -3059,6 +3129,7 @@ section[data-menu-group][data-acp-pc] button[role="menuitemradio"][data-highligh
       LatencyCard, CacheCard, CreditCard, ThroughputCard, QualityStrip, HeatmapCard, ErrorCard, ErrorClassCard, QuotaCard, quotaView, TimeoutCell, Heatmap,
       weeklyReport, dayDrill, sessionDistView, SessionDistCard,
       InsightsPage, AcpOverlay, AcpModal, slashSource,
+      VersionBadge, initVer, verStore, saveVer, quietFor, VER_KEY, LS_KEY,
       apply(ctx) {
         CTX = ctx
         ctx.effect(() => () => { if (CTX === ctx) CTX = null }, 'llm-acp: context handle')

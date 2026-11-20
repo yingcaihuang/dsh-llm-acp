@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, symlinkSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { compareVersions, createLatestChecker, installKind, LATEST_OK_TTL_MS, LATEST_FAIL_TTL_MS } from '../lib/latest.js'
+import { cleanNotes, compareVersions, createLatestChecker, installKind, LATEST_OK_TTL_MS, LATEST_FAIL_TTL_MS } from '../lib/latest.js'
 
 const tests = []
 const t = (name, fn) => tests.push([name, fn])
@@ -81,6 +81,17 @@ t('installKind: node_modules copy is registry, a symlinked checkout is link', ()
     assert.equal(installKind(linked), 'link', 'a link: install resolves to the checkout')
     assert.equal(installKind(join(root, 'missing')), 'unknown')
   } finally { rmSync(root, { recursive: true, force: true }) }
+})
+
+t('releaseNotes travel with latest; junk is dropped', async () => {
+  const check = createLatestChecker({ fetchImpl: async () => answer({ version: '0.2.6', releaseNotes: ['  更新内容 A ', '', 42, 'B'] }) })
+  const r = await check()
+  assert.deepEqual(r.notes, ['更新内容 A', 'B'])
+  const bare = await createLatestChecker({ fetchImpl: async () => answer({ version: '0.2.6' }) })()
+  assert.deepEqual(bare.notes, [], 'no releaseNotes ⇒ empty list')
+  assert.deepEqual(cleanNotes('not a list'), [])
+  assert.equal(cleanNotes(Array(20).fill('x')).length, 8)
+  assert.equal(cleanNotes(['y'.repeat(500)])[0].length, 200)
 })
 
 let failed = 0

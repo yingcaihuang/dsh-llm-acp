@@ -43,7 +43,7 @@
     "url": "git+https://github.com/yingcaihuang/dsh-llm-acp.git"
   },
   "scripts": {
-    "test": "node test/discover.mjs && node test/quota-probe.mjs && node test/dashboard-async.mjs && node test/errors-port.mjs && node test/backoff-port.mjs && node test/models-cache-port.mjs && node test/credits-port.mjs && node test/effort-port.mjs && node test/askuser-port.mjs && node test/usage-metrics.mjs && node test/version-sync.mjs && node test/retry-delay.mjs && node test/latest-check.mjs"
+    "test": "node test/discover.mjs && node test/quota-probe.mjs && node test/dashboard-async.mjs && node test/errors-port.mjs && node test/backoff-port.mjs && node test/models-cache-port.mjs && node test/credits-port.mjs && node test/effort-port.mjs && node test/askuser-port.mjs && node test/usage-metrics.mjs && node test/version-sync.mjs && node test/retry-delay.mjs && node test/latest-check.mjs && node test/version-state.mjs"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.4.0",
@@ -70,5 +70,10 @@
         "@deepseek-ai/dsh-client-ui-sidebar-right"
       ]
     }
-  }
+  },
+  "releaseNotes": [
+    "升级提醒里可以展开「更新内容」，查看新版本改了什么",
+    "更新并重启后提示一次「已升级到 vX」，并列出本次更新内容",
+    "升级提醒支持「稍后提醒」（24 小时）和「跳过此版本」，收起动效"
+  ]
 }
