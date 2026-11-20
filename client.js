@@ -26,6 +26,8 @@ window.__ModuleLoader__.load({
     // ── version badge: this copy's version vs the newest on npm, with an animated update reminder ──
     const PKG_NAME = 'dsh-llm-acp'
     const LATEST_POLL_MS = 30 * 60_000
+    // While npmmirror is still syncing a new release, look again often so the reminder appears soon after.
+    const LAG_POLL_MS = 2 * 60_000
     /** > 0 when a is newer than b (x.y.z numeric; a prerelease sorts before its release). */
     const cmpVer = (a, b) => {
       const p = (v) => { const m = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?/.exec(String(v ?? '')); return m ? [+m[1], +m[2], +m[3], m[4] ?? ''] : null }
@@ -88,19 +90,22 @@ window.__ModuleLoader__.load({
         catch (e) { setInfo({ latest: null, error: String(e?.message ?? e) }) }
         finally { setChecking(false) }
       }, [])
-      useEffect(() => {
-        initVer()
-        check(false)
-        const t = setInterval(() => check(false), LATEST_POLL_MS)
-        return () => clearInterval(t)
-      }, [check])
       const latest = info?.latest ?? null
+      // npm already has a newer version that a mirror DSH may install from has not synced yet.
+      const syncing = !!info?.newest && cmpVer(info.newest, latest ?? CLIENT_VERSION) > 0 && cmpVer(info.newest, CLIENT_VERSION) > 0
+      useEffect(() => { initVer(); check(false) }, [check])
+      useEffect(() => {
+        const t = setInterval(() => check(false), syncing ? LAG_POLL_MS : LATEST_POLL_MS)
+        return () => clearInterval(t)
+      }, [check, syncing])
       // Compared with what this page runs: a stale host half (not restarted) is the other alert's job.
       const newer = !!latest && cmpVer(latest, CLIENT_VERSION) > 0
       const quiet = newer && quietFor(st, latest)
       const dev = info?.install === 'link'
       const checkedTitle = info?.checkedAt ? `\n上次检查：${fmtTime(info.checkedAt)}${info.registry ? ` · ${info.registry.replace(/^https?:\/\//, '').replace(/\/$/, '')}` : ''}` : ''
       const verTitle = `当前插件版本 v${CLIENT_VERSION}${info?.current && info.current !== CLIENT_VERSION ? `（服务端 v${info.current}）` : ''}${latest ? `\n线上最新 v${latest}` : ''}${checkedTitle}\n点击重新检查线上版本`
+      const lagHosts = (info?.lagging ?? []).join('、') || '镜像'
+      const syncTitle = syncing ? `v${info.newest} 已发布到 npm，但 ${lagHosts} 还没同步完。DSH 可能从镜像安装，现在更新会失败。\n通常几分钟内同步完成，同步好后这里会自动出现升级提醒。` : ''
       const toggle = (p) => setPanel(panel === p ? '' : p)
       const onUpgrade = () => { if (dev || !openUpdate()) toggle('help') }
       const later = () => { saveVer({ snooze: { v: latest, until: Date.now() + SNOOZE_MS } }); setPanel('') }
@@ -123,6 +128,8 @@ window.__ModuleLoader__.load({
               h('button', { type: 'button', onClick: skip, title: `不再提醒 v${latest}，出下一个版本时再提醒` }, small ? '跳过' : '跳过此版本')))
           : newer
             ? h('button', { type: 'button', className: 'acp-upd-quiet', title: quietTitle, onClick: onUpgrade }, `v${latest} 可更新`)
+            : syncing
+              ? h('span', { className: 'acp-upd-sync', title: syncTitle, role: 'status' }, h('i', { className: 'spin', 'aria-hidden': true }), `v${info.newest} 镜像同步中`)
             : latest
               ? h('span', { className: 'acp-ver-ok', title: `已是最新版本${checkedTitle}` }, '已是最新')
               : info?.error
@@ -620,6 +627,8 @@ window.__ModuleLoader__.load({
 .acp-upd-acts button{font:inherit;font-size:11px;color:var(--acp-muted);background:none;border:0;padding:2px 6px;border-radius:6px;cursor:pointer}
 .acp-upd-acts button:hover{color:var(--acp-in);background:color-mix(in srgb,var(--acp-in) 8%,transparent)}
 .acp-upd-quiet{font:inherit;font-size:11px;font-weight:600;padding:2px 9px;border-radius:999px;cursor:pointer;color:var(--acp-in);background:color-mix(in srgb,var(--acp-in) 8%,var(--acp-card));border:1px solid color-mix(in srgb,var(--acp-in) 35%,transparent)}
+.acp-upd-sync{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:2px 9px;border-radius:999px;color:var(--acp-muted);border:1px dashed var(--acp-b2);background:var(--acp-card);cursor:help}
+.acp-upd-sync .spin{width:9px;height:9px;border-radius:50%;border:1.5px solid currentColor;border-top-color:transparent;animation:acp-upd-spin 1.2s linear infinite}
 .acp-notes{margin:2px 0 4px;padding-left:18px}
 .acp-notes li{margin:1px 0}
 .acp-notes.none{padding-left:0;color:var(--acp-muted)}
