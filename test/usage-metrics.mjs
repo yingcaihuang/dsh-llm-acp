@@ -115,6 +115,7 @@ t('todaySummary: counts from local midnight to now only', () => {
   assert.equal(s.inputTokens, 1500)
   assert.equal(s.outputTokens, 150)
   assert.equal(s.lastAt, local(11, 30))
+  assert.equal(s.lastEverAt, local(11, 30), 'a turn after now is not "last"')
 })
 
 t('todaySummary: failed vs aborted, providers by turns', () => {
@@ -134,7 +135,9 @@ t('todaySummary: empty day', () => {
   const s = todaySummary([rec({ at: local(8, 0, 19) })], { now: noon })
   assert.equal(s.turns, 0)
   assert.equal(s.lastAt, 0)
+  assert.equal(s.lastEverAt, local(8, 0, 19), 'quiet day still reports the last turn of any day')
   assert.deepEqual(s.providers, [])
+  assert.equal(todaySummary([], { now: noon }).lastEverAt, 0)
 })
 
 let failed = 0

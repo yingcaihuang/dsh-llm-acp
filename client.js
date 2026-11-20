@@ -111,7 +111,7 @@ window.__ModuleLoader__.load({
 .acp-today .d.bad{color:var(--acp-err,#e5484d)}
 .acp-today .dots{display:flex;gap:3px;margin-top:3px;min-height:7px}
 .acp-today .dots i{width:7px;height:7px;border-radius:50%}
-.acp-today .empty{align-self:center;font-size:12px;color:var(--acp-muted);padding:2px 10px}
+.acp-today.none b{color:var(--acp-muted);font-weight:600}
 .acp.compact .acp-today b{font-size:14px}
 .acp.compact .acp-today .it{padding:1px 10px}
 @container (max-width:560px){.acp-today .it.x{display:none}.acp-today .it{padding:2px 10px}}
@@ -2476,27 +2476,31 @@ window.__ModuleLoader__.load({
       const todayStrip = () => {
         if (!tdy || lockSession) return null
         const goToday = () => { setCustomOn(false); setRange('today') }
-        if (!tdy.turns) return h('div', { className: 'acp-today' }, h('span', { className: 'empty' }, filterOn ? '今日暂无调用（已筛选）' : '今日暂无调用'))
+        // A quiet day keeps the same three items (values "—") so the strip never looks missing.
+        const none = !tdy.turns
         const done = tdy.ok + tdy.failed
         const rate = done > 0 ? pctN(tdy.ok, done) : null
         const used = tdy.providers ?? []
         const hint = '\n点击把下方范围切到「今日」'
-        return h('div', { className: 'acp-today', role: 'group', 'aria-label': '今日摘要' },
+        const lastEver = num(tdy.lastEverAt)
+        const lastLine = lastEver ? `最近调用 ${ago(lastEver)}` : '还没有调用记录'
+        const quietTitle = `今日暂无调用${filterOn ? '（已筛选）' : ''}${lastEver ? `\n最近一次调用：${fmtTime(lastEver)}` : ''}`
+        return h('div', { className: `acp-today${none ? ' none' : ''}`, role: 'group', 'aria-label': '今日摘要' },
           h('button', {
             type: 'button', className: 'it', onClick: goToday,
-            title: `今日输入 ${n0(tdy.inputTokens)} · 输出 ${n0(tdy.outputTokens)}${tdy.cacheReadTokens ? ` · 缓存读 ${n0(tdy.cacheReadTokens)}` : ''}${tdy.estimated ? `\n其中 ${tdy.estimated} 轮未上报 Token，按字符数估算（*）` : ''}${hint}`,
+            title: none ? quietTitle : `今日输入 ${n0(tdy.inputTokens)} · 输出 ${n0(tdy.outputTokens)}${tdy.cacheReadTokens ? ` · 缓存读 ${n0(tdy.cacheReadTokens)}` : ''}${tdy.estimated ? `\n其中 ${tdy.estimated} 轮未上报 Token，按字符数估算（*）` : ''}${hint}`,
           },
             h('small', null, filterOn ? '今日 Token · 已筛选' : '今日 Token'),
-            h('b', null, compact(tdy.inputTokens + tdy.outputTokens), tdy.estimated ? h('i', { className: 'est' }, '*') : null),
-            h('span', { className: 'd' }, `入 ${compact(tdy.inputTokens)} / 出 ${compact(tdy.outputTokens)}`)),
+            h('b', null, none ? '—' : compact(tdy.inputTokens + tdy.outputTokens), !none && tdy.estimated ? h('i', { className: 'est' }, '*') : null),
+            h('span', { className: 'd' }, none ? lastLine : `入 ${compact(tdy.inputTokens)} / 出 ${compact(tdy.outputTokens)}`)),
           h('button', {
             type: 'button', className: 'it', onClick: goToday,
-            title: `成功 ${tdy.ok} · 失败 ${tdy.failed} · 中断 ${tdy.aborted}（中断不计入成功率）${hint}`,
+            title: none ? quietTitle : `成功 ${tdy.ok} · 失败 ${tdy.failed} · 中断 ${tdy.aborted}（中断不计入成功率）${hint}`,
           },
             h('small', null, '今日轮次'),
-            h('b', null, n0(tdy.turns)),
-            h('span', { className: `d${tdy.failed ? ' bad' : ''}` }, rate === null ? `中断 ${tdy.aborted}` : `成功 ${rate}%${tdy.failed ? ` · 失败 ${tdy.failed}` : ''}`)),
-          h('div', { className: 'it x', title: used.length ? used.map((p) => `${nameOf(p.id)}：${p.turns} 轮`).join('\n') : '' },
+            h('b', null, none ? '—' : n0(tdy.turns)),
+            h('span', { className: `d${tdy.failed ? ' bad' : ''}` }, none ? '今日暂无调用' : rate === null ? `中断 ${tdy.aborted}` : `成功 ${rate}%${tdy.failed ? ` · 失败 ${tdy.failed}` : ''}`)),
+          h('div', { className: 'it x', title: used.length ? used.map((p) => `${nameOf(p.id)}：${p.turns} 轮`).join('\n') : '今天还没有 CLI 被调用' },
             h('small', null, '今日活跃 CLI'),
             h('b', null, used.length, h('em', null, ` / ${providers.length}`)),
             h('span', { className: 'dots' }, ...used.slice(0, 8).map((p) => h('i', { key: p.id, style: { background: colorOf(p.id) } })))))
