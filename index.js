@@ -75,6 +75,14 @@ export function apply(ctx, rawConfig) {
     return store.readImageRequest(ref, target, signal)
   }
 
+  const rawProviders = rawConfig?.providers && typeof rawConfig.providers === 'object' ? rawConfig.providers : {}
+  // Tell the host (and through it every open model picker) that a provider's advertised models
+  // changed, so a console switch, delete, or a CLI discovery result (failure ⇄ recovery, models
+  // added/removed) shows up at once instead of after the picker's cache expires. Same event
+  // DSH's own DeepSeek adapter emits.
+  const notifyModels = (id) => {
+    try { ctx.emit('llm/models-updated', id) } catch (e) { log.warn(e, { msg: 'llm-acp: models-updated emit failed' }) }
+  }
   const adapter = createAcpAdapter({
     // askUser (upstream 0.4.19): DSH's waitable approval service. Only 'allowed-once' lets the CLI go
     // ahead; no service / no live agent ⇒ 'unavailable' ⇒ refused exactly as before. callId is not
@@ -101,6 +109,7 @@ export function apply(ctx, rawConfig) {
     logger: log,
     prefs,
     onTurn: (rec) => usage.append(rec),
+    onModelsChanged: notifyModels,
   })
 
   const release = providers.size > 0 ? ctx.llm.registerAdapter([...providers.keys()], adapter) : () => {}
@@ -116,13 +125,6 @@ export function apply(ctx, rawConfig) {
     const entry = ctx.fiber?.entry
     if (typeof editor?.edit !== 'function' || entry === undefined) throw new Error('当前 profile 不支持在界面里保存配置（没有 configEditor），请改 cordis.patch.yml')
     await editor.edit(entry, (current) => change(current))
-  }
-  const rawProviders = rawConfig?.providers && typeof rawConfig.providers === 'object' ? rawConfig.providers : {}
-  // Tell the host (and through it every open model picker) that a provider's advertised models
-  // changed, so a console switch or delete shows up at once instead of after the picker's cache
-  // expires. Same event DSH's own DeepSeek adapter emits.
-  const notifyModels = (id) => {
-    try { ctx.emit('llm/models-updated', id) } catch (e) { log.warn(e, { msg: 'llm-acp: models-updated emit failed' }) }
   }
   registerDashboardRoutes(ctx, { adapter, providers, prefs, usage, stateFile, saveConfig, rawProviders, notifyModels })
   ctx.logger?.info?.(`llm-acp: registered ${[...providers.keys()].join(', ') || '(no provider)'}`)

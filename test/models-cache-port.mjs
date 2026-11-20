@@ -114,11 +114,17 @@ function world(mode) {
   const l = await a.catalog('fake')
   ok(ids(l) === 'default,m1,m2', 'M-4 failed refresh ⇒ old list kept', ids(l))
   ok(a.runtime('fake').discovery?.ok === false && a.runtime('fake').backoff !== undefined, 'M-4 failure + backoff recorded', a.runtime('fake'))
+  ok((await a.listModels('fake')).length === 0, 'M-4 failed refresh ⇒ listModels hides the group from the picker')
   // M-5 logged out with a disk copy: the list is still served.
   w.setMode('auth')
   await a.refreshCatalog('fake')
   const l2 = await a.catalog('fake')
   ok(ids(l2) === 'default,m1,m2' && a.runtime('fake').backoff?.long === true, 'M-5 logged out ⇒ list kept, long backoff', { list: ids(l2), b: a.runtime('fake').backoff })
+  ok((await a.listModels('fake')).length === 0, 'M-5 logged out ⇒ listModels hides the group from the picker')
+  // M-5b recovery: a working CLI comes straight back to the picker.
+  w.setMode('models2')
+  await a.refreshCatalog('fake')
+  ok((await a.listModels('fake')).length > 0, 'M-5b recovered CLI ⇒ listModels shows the group again')
   await a.dispose()
 }
 
@@ -146,6 +152,37 @@ function world(mode) {
   const b = w2.make({}, '')
   await b.catalog('fake'); await b.dispose()
   ok(!existsSync(w2.files.models), 'M-8 modelsFile "" ⇒ no file')
+}
+
+// M-10 onModelsChanged announces only a changed advertised list (first load, models changed,
+// failure, recovery); an unchanged refresh stays silent.
+{
+  const w = world('models')
+  const events = []
+  const providers = resolveProviders({ providers: { fake: {
+    command: process.execPath, args: [agent], env: { MODE_FILE: w.files.mode, COUNT_FILE: w.files.count },
+    startupTimeoutMs: 8000, disposeGraceMs: 300, startupRetries: 0, modelCacheMs: 60,
+  } } })
+  const a = createAcpAdapter({
+    Base: class {}, providers: () => providers, resolveCwd: async () => root,
+    stateFile: join(root, 'sessions-m10.json'), modelsFile: w.files.models,
+    logger: { info() {}, warn() {}, error() {} },
+    onModelsChanged: (id) => events.push(id),
+  })
+  await a.catalog('fake')
+  ok(events.join() === 'fake', 'M-10 first discovery announces the list', events)
+  await sleep(120); await a.catalog('fake'); await sleep(300)
+  ok(events.length === 1, 'M-10 unchanged refresh ⇒ no extra announce', events)
+  w.setMode('models2')
+  await sleep(120); await a.catalog('fake'); await sleep(300)
+  ok(events.length === 2, 'M-10 changed models ⇒ one announce', events)
+  w.setMode('fail')
+  await sleep(120); await a.catalog('fake'); await sleep(300)
+  ok(events.length === 3, 'M-10 failed discovery ⇒ one announce', events)
+  w.setMode('models')
+  await a.refreshCatalog('fake')
+  ok(events.length === 4, 'M-10 recovery via refreshCatalog ⇒ one announce', events)
+  await a.dispose()
 }
 
 // M-9 the store rejects malformed files and junk entries (upstream validation kept).
