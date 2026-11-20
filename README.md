@@ -136,7 +136,7 @@ KPI 下方是**估算条**：CLI 没回报 token 的轮次按「字符数 ÷ 4�
    - 更新 `publishTimestamp`（Unix **秒**）；
    - 保持 `engines.dsh` 与实际兼容范围一致；
    - 用验证器跑一遍 `parseMarketIndex(JSON.parse(...), indexUrl)`。
-4. 用户把这个索引 URL 加到插件市场的索引列表（设置 → 插件市场，或调用 `pluginMarket.setIndexes`），就能在 Discover 里看到本插件。
+4. 用户启用实验性插件市场后，把这个索引 URL 加到「设置 → 插件 → 实验性插件 → 自定义插件索引」，就能在「发现」标签页里看到本插件。用户侧的完整步骤见下文「安装 · 四、从 DSH 插件市场安装」。
 
 详情页面：插件页读 `locale/en.json` / `locale/zh.json` 里的 `meta.detail`（[DETAIL.md](docs/DETAIL.md)、[DETAIL.zh.md](docs/DETAIL.zh.md)），图片是同目录的 [preview.svg](docs/preview.svg)。没有启用 `meta.detail` 时会回退到本 README。图标是 [icon.svg](icon.svg)。
 
@@ -144,7 +144,7 @@ KPI 下方是**估算条**：CLI 没回报 token 的轮次按「字符数 ÷ 4�
 
 ## 安装（给别人用）
 
-三种方式，按对方的场景选。**共同前提**：至少要装一个 ACP CLI（`kiro-cli acp`、`codebuddy --acp`、`opencode acp`、`pi-acp`、`@agentclientprotocol/claude-agent-acp`……），本插件自己不提供模型。
+四种方式，按对方的场景选；普通用户推荐第四种「从 DSH 插件市场安装」。**共同前提**：至少要装一个 ACP CLI（`kiro-cli acp`、`codebuddy --acp`、`opencode acp`、`pi-acp`、`@agentclientprotocol/claude-agent-acp`……），本插件自己不提供模型。
 
 ### 一、从本地目录装（最快，适合自己两台机器之间搬）
 
@@ -188,7 +188,25 @@ tgz 里**不含 `node_modules`**，`@agentclientprotocol/sdk` 和 `zod` 是插�
 3. `npm publish` 发布。
 4. 按上文「上架到 DSH 插件市场」更新索引里的 `versions` 和 `publishTimestamp`。
 
-### 装完之后（三种方式都一样）
+### 四、从 DSH 插件市场安装（图形界面，自动收到更新）
+
+不用敲命令，在 DSH 界面里点几下就能装好，以后有新版本会提示「更新可用」。插件市场目前是 DSH 的**实验性功能**，第一次用要先打开：
+
+1. **启用插件市场**：设置 → 插件 → 打开「实验性插件」，启用 **Experimental custom plugin indexes**（`@deepseek-ai/dsh-experimental-plugin-market-bundle`）。启用后「插件」页会多出 **发现** 标签页；没出现就重启一次 DSH。
+2. **添加索引源**：在「自定义插件索引」里添加下面这个 URL（只用加一次，每个 profile 各一份）：
+
+   ```
+   https://raw.githubusercontent.com/yingcaihuang/dsh-llm-acp/main/docs/market-index.json
+   ```
+
+3. **安装**：切到「发现」标签页，选这个索引源，找到 **ACP CLI models**，点「安装」。确认框里的来源应该是 npm registry 的 `dsh-llm-acp@<版本>`，确认即可。
+4. **升级**：以后发了新版本，「已安装」里这个插件会显示「更新可用」，点「更新」就行。
+
+> **已经用 `link:` 或 tgz 装过的，要先卸载再从市场装。** 同名插件只能有一份，市场版会替换本地版本；从本地目录装的版本不会自动升级。开发机上要即时改源码调试，就继续用 `link:`，不要从市场装。
+>
+> 从市场安装同样要求宿主版本在下文「版本门槛」的范围内，不满足时插件管理器会拦下。
+
+### 装完之后（四种方式都一样）
 
 插件装好后**一个 provider 都没有**（自带配置是 `providers: {}`）。打开「ACP 洞察」或右侧栏控制台，「本机 ACP CLI」卡片会自动扫描一次本机已装的 CLI，选一个点「配置并添加」即可，见下文「扫描本机 CLI，一键添加」。扫描结果不会自动接入，改配置前一定由用户确认。
 
