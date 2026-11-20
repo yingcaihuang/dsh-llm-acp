@@ -125,7 +125,7 @@ KPI 下方是**估算条**：CLI 没回报 token 的轮次按「字符数 ÷ 4�
 
 ## 上架到 DSH 插件市场（维护者）
 
-本插件的市场索引在 [docs/market-index.json](docs/market-index.json)，已经用 DSH 自带的 `parseMarketIndex` 验证过（format 1）。索引里的安装来源是 npm registry：`dsh-llm-acp@0.2.0`，所以用户装好后会收到「更新可用」提示，点更新就是 `pnpm add dsh-llm-acp@新版本`，不需要 Git 凭据。
+本插件的市场索引在 [docs/market-index.json](docs/market-index.json)，已经用 DSH 自带的 `parseMarketIndex` 验证过（format 1）。索引里的安装来源是 npm registry：`dsh-llm-acp@0.2.1`，所以用户装好后会收到「更新可用」提示，点更新就是 `pnpm add dsh-llm-acp@新版本`，不需要 Git 凭据。
 
 发布步骤：
 
