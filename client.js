@@ -23,6 +23,67 @@ window.__ModuleLoader__.load({
       render() { return this.state.failed ? null : h(CallRender, { render: this.props.render }) }
     }
 
+    // ── version badge: this copy's version vs the newest on npm, with an animated update reminder ──
+    const PKG_NAME = 'dsh-llm-acp'
+    const LATEST_POLL_MS = 30 * 60_000
+    /** > 0 when a is newer than b (x.y.z numeric; a prerelease sorts before its release). */
+    const cmpVer = (a, b) => {
+      const p = (v) => { const m = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?/.exec(String(v ?? '')); return m ? [+m[1], +m[2], +m[3], m[4] ?? ''] : null }
+      const x = p(a), y = p(b)
+      if (!x || !y) return 0
+      for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i] ? 1 : -1
+      if (x[3] === y[3]) return 0
+      return !x[3] ? 1 : !y[3] ? -1 : x[3] > y[3] ? 1 : -1
+    }
+    /** Open this plugin's detail page (its「更新到 x」button lives there); false when the host offers no navigation. */
+    const openUpdate = () => {
+      const nav = svc('pluginNavigation')
+      if (!nav || typeof nav.openBundle !== 'function') return false
+      try { nav.openBundle(PKG_NAME); return true } catch { return false }
+    }
+    function VersionBadge({ small = false }) {
+      const [info, setInfo] = useState(null)
+      const [checking, setChecking] = useState(false)
+      const [help, setHelp] = useState(false)
+      const check = useCallback(async (force) => {
+        setChecking(true)
+        try { setInfo(await getJson(`${R.latest}${force ? '?force=1' : ''}`)) }
+        catch (e) { setInfo({ latest: null, error: String(e?.message ?? e) }) }
+        finally { setChecking(false) }
+      }, [])
+      useEffect(() => {
+        check(false)
+        const t = setInterval(() => check(false), LATEST_POLL_MS)
+        return () => clearInterval(t)
+      }, [check])
+      const latest = info?.latest ?? null
+      // Compared with what this page runs: a stale host half (not restarted) is the other alert's job.
+      const newer = !!latest && cmpVer(latest, CLIENT_VERSION) > 0
+      const dev = info?.install === 'link'
+      const checkedTitle = info?.checkedAt ? `\n上次检查：${fmtTime(info.checkedAt)}${info.registry ? ` · ${info.registry.replace(/^https?:\/\//, '').replace(/\/$/, '')}` : ''}` : ''
+      const verTitle = `当前插件版本 v${CLIENT_VERSION}${info?.current && info.current !== CLIENT_VERSION ? `（服务端 v${info.current}）` : ''}${latest ? `\n线上最新 v${latest}` : ''}${checkedTitle}\n点击重新检查线上版本`
+      const onUpgrade = () => { if (dev || !openUpdate()) setHelp(!help) }
+      return h('span', { className: `acp-ver-wrap${small ? ' small' : ''}` },
+        h('button', { type: 'button', className: 'acp-ver', title: verTitle, disabled: checking, onClick: () => check(true) },
+          `v${CLIENT_VERSION}`, checking ? h('i', { className: 'spin', 'aria-hidden': true }) : null),
+        newer
+          ? h('button', { type: 'button', className: `acp-upd${dev ? ' dev' : ''}`, onClick: onUpgrade, title: dev ? `线上已有 v${latest}；当前是 link: 开发安装，没有更新按钮` : `线上已有 v${latest}，点击打开插件详情页，点右上角「更新到 ${latest}」` },
+            h('span', { className: 'ring', 'aria-hidden': true }),
+            h('span', { className: 'dot', 'aria-hidden': true }),
+            small ? `新版本 v${latest}` : `发现新版本 v${latest} · ${dev ? '开发安装' : '去升级'}`,
+            h('span', { className: 'arr', 'aria-hidden': true }, '→'))
+          : latest
+            ? h('span', { className: 'acp-ver-ok', title: `已是最新版本${checkedTitle}` }, '已是最新')
+            : info?.error
+              ? h('button', { type: 'button', className: 'acp-ver-err', title: `线上版本查询失败：${info.error}\n点击重试`, onClick: () => check(true) }, '线上版本查询失败')
+              : null,
+        help && newer ? h('div', { className: 'acp-upd-help', role: 'status' },
+          dev
+            ? '当前是 link: 本地开发安装，插件页不会出现更新按钮。在插件目录执行 git pull，再到插件页把开关关掉再打开（或 ⌘Q 重启 DSH）。'
+            : `请到 设置 → 插件 → 已安装 → ACP CLI 模型，点右上角「更新到 ${latest}」。更新后按 ⌘Q 完全退出 DSH 再打开，并在本页 ⌘⇧R 强制刷新。`,
+          h('button', { type: 'button', className: 'acp-link', onClick: () => setHelp(false) }, '知道了')) : null)
+    }
+
     const NS = 'llmAcp'
     const TAB_ID = 'dsh-llm-acp'
     const KIND = 'llm-acp-console'
@@ -31,7 +92,7 @@ window.__ModuleLoader__.load({
     const R = {
       dashboard: 'api/llm-acp.dashboard', models: 'api/llm-acp.models', provider: 'api/llm-acp.provider',
       refresh: 'api/llm-acp.refresh', csv: 'api/llm-acp.csv',
-      discover: 'api/llm-acp.discover', probe: 'api/llm-acp.probe', add: 'api/llm-acp.add', remove: 'api/llm-acp.remove', tps: 'api/llm-acp.tps',
+      discover: 'api/llm-acp.discover', probe: 'api/llm-acp.probe', add: 'api/llm-acp.add', remove: 'api/llm-acp.remove', tps: 'api/llm-acp.tps', latest: 'api/llm-acp.latest',
     }
     const zh = { title: 'ACP 控制台', description: '查看已接入的 ACP CLI、运行状态、模型与 Token 用量报表，并控制哪些模型出现在模型列表里', open: '打开 ACP 控制台' }
     const en = { title: 'ACP console', description: 'Connected ACP CLIs, live status, models and token usage reports; choose which models appear in the model picker', open: 'Open ACP console' }
@@ -478,6 +539,28 @@ window.__ModuleLoader__.load({
 .acp-page{padding:18px 22px 48px}
 .acp-pagehead{display:flex;flex-direction:column;gap:2px;margin:0 0 14px}
 .acp-pagehead h1{font-size:18px;font-weight:750;margin:0;line-height:1.3}
+.acp-ph-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.acp-ver-wrap{position:relative;display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
+.acp-ver{display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:11.5px;font-weight:600;font-variant-numeric:tabular-nums;padding:2px 9px;border-radius:999px;border:1px solid var(--acp-b2);background:var(--acp-card);color:var(--acp-muted);cursor:pointer}
+.acp-ver:hover{color:var(--acp-in);border-color:color-mix(in srgb,var(--acp-in) 40%,transparent)}
+.acp-ver .spin{width:9px;height:9px;border-radius:50%;border:1.5px solid currentColor;border-top-color:transparent;animation:acp-upd-spin .8s linear infinite}
+.acp-ver-ok{font-size:11px;color:var(--acp-ok)}
+.acp-ver-err{font:inherit;font-size:11px;color:var(--acp-muted);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline dotted}
+.acp-upd{position:relative;isolation:isolate;display:inline-flex;align-items:center;gap:7px;font:inherit;font-size:12px;font-weight:700;padding:4px 12px 4px 10px;border-radius:999px;border:0;color:#fff;cursor:pointer;overflow:visible;background:linear-gradient(110deg,var(--acp-in),var(--acp-out),var(--acp-in));background-size:220% 100%;box-shadow:0 2px 10px color-mix(in srgb,var(--acp-in) 40%,transparent);animation:acp-upd-flow 3.2s linear infinite,acp-upd-bob 2.4s ease-in-out infinite}
+.acp-upd:hover{filter:brightness(1.08)}
+.acp-upd .ring{position:absolute;inset:-3px;border-radius:inherit;border:2px solid color-mix(in srgb,var(--acp-in) 60%,transparent);z-index:-1;animation:acp-upd-ring 1.8s ease-out infinite}
+.acp-upd .dot{width:7px;height:7px;border-radius:50%;background:#fff;animation:acp-upd-dot 1.4s ease-in-out infinite}
+.acp-upd .arr{display:inline-block;animation:acp-upd-arr 1.2s ease-in-out infinite}
+.acp-upd.dev{background:linear-gradient(110deg,var(--acp-warn),color-mix(in srgb,var(--acp-warn) 60%,var(--acp-out)),var(--acp-warn));background-size:220% 100%}
+.acp-ver-wrap.small .acp-upd{font-size:11px;padding:2px 9px 2px 8px}
+.acp-upd-help{flex-basis:100%;font-size:11.5px;line-height:1.5;padding:6px 10px;border-radius:8px;border:1px solid color-mix(in srgb,var(--acp-in) 35%,transparent);background:color-mix(in srgb,var(--acp-in) 7%,var(--acp-card))}
+.acp-upd-help .acp-link{margin-left:6px}
+@keyframes acp-upd-flow{to{background-position:-220% 0}}
+@keyframes acp-upd-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+@keyframes acp-upd-ring{0%{opacity:.9;transform:scale(1)}100%{opacity:0;transform:scale(1.35,1.6)}}
+@keyframes acp-upd-dot{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,.75)}50%{box-shadow:0 0 0 4px rgba(255,255,255,0)}}
+@keyframes acp-upd-arr{0%,100%{transform:translateX(0)}50%{transform:translateX(3px)}}
+@keyframes acp-upd-spin{to{transform:rotate(360deg)}}
 .acp-pagehead .sub{font-size:12px;color:var(--acp-muted)}
 .acp-entries{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:0 0 10px;font-size:11.5px;color:var(--acp-muted)}
 .acp-entries label{display:inline-flex;align-items:center;gap:5px;cursor:pointer;user-select:none}
@@ -2575,7 +2658,7 @@ window.__ModuleLoader__.load({
       return h('div', { className: `acp${compactMode ? ' compact' : ''}${mode === 'page' ? ' acp-page' : ''}` },
         h('style', null, CSS),
         mode === 'page' ? h('div', { className: 'acp-pagehead' },
-          h('h1', null, 'ACP 洞察'),
+          h('div', { className: 'acp-ph-row' }, h('h1', null, 'ACP 洞察'), h(Guard, { name: 'version badge', render: () => h(VersionBadge, null) })),
           h('span', { className: 'sub' }, '全部会话的 ACP CLI 状态、模型与 Token 用量；点图表 / 会话行可交叉筛选，↗ 直接打开对应会话。')) : null,
         h('div', { className: 'acp-hero' },
           h('div', { className: 'acp-row' },
@@ -2583,6 +2666,7 @@ window.__ModuleLoader__.load({
             h('div', null,
               h('div', { className: 'acp-h1' }, mode === 'page' ? 'ACP 控制台' : lockSession ? `本会话 · ${sessText(lockSession)}` : 'ACP 控制台'),
               h('div', { className: 'acp-hsub' }, lockSession ? sessSub() : data ? `${providers.length} 个 CLI · ${modelsAll} 个模型 · ${loading ? '刷新中…' : data.pending ? '部分信息后台读取中…' : `更新于 ${fmtTime(data.generatedAt).slice(6)}`}` : '正在读取…')),
+            mode !== 'page' && !lockSession ? h(Guard, { name: 'version badge', render: () => h(VersionBadge, { small: true }) }) : null,
             h('span', { className: 'acp-sp' }),
             h(Guard, { name: 'today strip', render: todayStrip, resetKey: data?.generatedAt }),
             inflight.length ? h('span', { className: 'acp-live' }, h('i'), `进行中 ${inflight.length} 轮`) : null),
