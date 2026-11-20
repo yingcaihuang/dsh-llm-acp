@@ -22,7 +22,9 @@
     "README.md",
     "LICENSE",
     "docs/DETAIL.md",
-    "docs/preview.svg"
+    "docs/DETAIL.zh.md",
+    "docs/preview.svg",
+    "docs/market-index.json"
   ],
   "engines": {
     "node": ">=22",

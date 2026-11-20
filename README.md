@@ -130,8 +130,8 @@ KPI 下方是**估算条**：CLI 没回报 token 的轮次按「字符数 ÷ 4�
 发布步骤：
 
 1. 把本仓库设为 **Public**（私有仓库不能做公开市场来源，索引 URL 必须匿名可访问）。
-2. 在目标 npm registry 上发布：`npm publish`（`package.json` 可发布——没有 `private` 字段，`files` 含 `docs/DETAIL.md`、`docs/preview.svg`、locale、icon、LICENSE）。
-3. 把 `docs/market-index.json` 放到一个稳定的 https URL，例如 `https://<用户名>.github.io/dsh-llm-acp/market-index.json`（可用 GitHub Pages）。每次发版：
+2. 在目标 npm registry 上发布：`npm publish`（先 `npm login`；`package.json` 可发布——没有 `private` 字段，`files` 含两种语言的详情文档与预览图，另有 locale、icon、LICENSE）。
+3. 把 `docs/market-index.json` 放到一个稳定的 https URL，可用仓库 raw 地址 `https://raw.githubusercontent.com/yingcaihuang/dsh-llm-acp/main/docs/market-index.json`，或启用 GitHub Pages（如 `https://yingcaihuang.github.io/dsh-llm-acp/market-index.json`）。每次发版：
    - 在 `versions` 里加一条新版本，按 SemVer 降序排；
    - 更新 `publishTimestamp`（Unix **秒**）；
    - 保持 `engines.dsh` 与实际兼容范围一致；
@@ -179,9 +179,14 @@ tgz 里**不含 `node_modules`**，`@agentclientprotocol/sdk` 和 `zod` 是插�
 
 ### 三、从 npm registry 安装（适合长期多人用）
 
-包已经发布到 npm：`dsh-llm-acp@0.2.0`。对方直接 `pnpm add dsh-llm-acp` 即可，`@agentclientprotocol/sdk` 和 `zod` 会作为插件自己的依赖装上；`@deepseek-ai/dsh-llm` 是可选 peer，由宿主提供。装完照上文「装完之后」添加 provider。
+维护者先把 `dsh-llm-acp` 发布到 npm registry，对方就能直接 `pnpm add dsh-llm-acp`，`@agentclientprotocol/sdk` 和 `zod` 会作为插件自己的依赖装上；`@deepseek-ai/dsh-llm` 是可选 peer，由宿主提供。装完照上文「装完之后」添加 provider。发布链接见 [npm](https://www.npmjs.com/package/dsh-llm-acp)（发布后可达）。
 
-如果你是维护者要发新版本：先 `npm version <新版本>` 更新 `package.json` 的版本号，确认 `files[]` 覆盖运行时要用的文件（`npm pack --dry-run` 可核对，当前打出 28 个文件、约 160 KB），然后 `npm publish`。发布后记得按上文「上架到 DSH 插件市场」更新索引里的 `versions` 和 `publishTimestamp`。
+维护者发版步骤：
+
+1. `npm login` 登录到有 `dsh-llm-acp` 发布权限的账号（`npm whoami` 确认）。
+2. `npm version <新版本>` 更新 `package.json` 版本号，确认 `files[]` 覆盖运行时要用的文件（`npm pack --dry-run` 核对；`files` 列了两种语言的详情文档、预览图和市场索引，但不含 README 里的截图）。
+3. `npm publish` 发布。
+4. 按上文「上架到 DSH 插件市场」更新索引里的 `versions` 和 `publishTimestamp`。
 
 ### 装完之后（三种方式都一样）
 
