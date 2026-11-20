@@ -1,6 +1,6 @@
 {
   "name": "dsh-llm-acp",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "Expose local ACP CLI agents (kiro-cli, codebuddy, …) as DeepSeek Harness LLM provider routes, with a usage console and one-click CLI setup",
   "license": "MIT",
   "type": "module",
@@ -72,9 +72,7 @@
     }
   },
   "releaseNotes": [
-    "升级提醒只在 npm 和 npmmirror 都有新版本后才出现，避免点更新时因镜像未同步而失败",
-    "更新没生效时会说明原因；版本不一致提示里可一键「刷新页面」",
-    "页面在后台时暂停检查版本，切回页面立即检查；开启「减少动态效果」时升级提醒不再闪动",
-    "控制台跟随 DSH 界面语言，支持英文"
+    "升级提醒默认保持动画：点了「稍后提醒」或「跳过此版本」后，「vX 可更新」仍有闪动的圆点和轻微浮动",
+    "点「vX 可更新」会清除稍后 / 跳过状态，恢复完整的动画提醒并跳到更新页面"
   ]
 }
