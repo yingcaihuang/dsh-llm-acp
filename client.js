@@ -241,7 +241,7 @@ window.__ModuleLoader__.load({
               h('button', { type: 'button', onClick: later, title: tr('24 小时内不再显示动效提醒') }, small ? tr('稍后') : tr('稍后提醒')),
               h('button', { type: 'button', onClick: skip, title: `不再提醒 v${latest}，出下一个版本时再提醒` }, small ? tr('跳过') : tr('跳过此版本'))))
           : newer
-            ? h('button', { type: 'button', className: 'acp-upd-quiet', title: quietTitle, onClick: onUpgrade }, zhEn(`v${latest} 可更新`, `v${latest} available`))
+            ? h('button', { type: 'button', className: 'acp-upd-quiet', title: quietTitle, onClick: () => { saveVer({ skip: null, snooze: null }); onUpgrade() } }, h('span', { className: 'dot', 'aria-hidden': true }), zhEn(`v${latest} 可更新`, `v${latest} available`))
             : syncing
               ? h('span', { className: 'acp-upd-sync', title: syncTitle, role: 'status' }, h('i', { className: 'spin', 'aria-hidden': true }), zhEn(`v${info.newest} 镜像同步中`, `v${info.newest} syncing to mirror`))
             : latest
@@ -758,6 +758,9 @@ window.__ModuleLoader__.load({
 .acp-upd-fail .ttl{font-weight:700;margin-bottom:3px;color:var(--acp-warn)}
 .acp-upd-fail .acp-link{margin-right:10px}
 @media (prefers-reduced-motion:reduce){.acp-upd .ring{display:none}.acp-upd{box-shadow:none}}
+.acp-upd-quiet{display:inline-flex;align-items:center;gap:5px;animation:acp-upd-bob 2.8s ease-in-out infinite}
+.acp-upd-quiet .dot{width:6px;height:6px;border-radius:50%;background:currentColor;animation:acp-upd-qdot 1.6s ease-in-out infinite}
+@keyframes acp-upd-qdot{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--acp-in) 55%,transparent)}50%{box-shadow:0 0 0 4px transparent}}
 .acp-notes{margin:2px 0 4px;padding-left:18px}
 .acp-notes li{margin:1px 0}
 .acp-notes.none{padding-left:0;color:var(--acp-muted)}
