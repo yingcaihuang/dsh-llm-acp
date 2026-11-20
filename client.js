@@ -98,6 +98,23 @@ window.__ModuleLoader__.load({
 @media (prefers-reduced-motion:reduce){.acp-guide::before,.acp-cfg.guide,.acp-cfg.guide::before,.acp-cfg.guide svg,.acp-coach,.acp-coach .spark{animation:none}.acp-cfg.guide::before{display:none}}
 .acp-live{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;padding:2px 9px;border-radius:999px;color:var(--acp-warn);background:color-mix(in srgb,var(--acp-warn) 10%,var(--acp-card));border:1px solid color-mix(in srgb,var(--acp-warn) 30%,transparent)}
 .acp-live i{width:7px;height:7px;border-radius:50%;background:currentColor;animation:acp-pulse 1.4s ease-in-out infinite}
+.acp-today{display:flex;align-items:stretch;flex-wrap:wrap}
+.acp-today .it{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:2px 14px;border:0;border-left:1px solid var(--acp-b2);border-radius:0;background:none;color:inherit;font:inherit;text-align:left}
+.acp-today .it:first-child{border-left:0}
+.acp-today button.it{cursor:pointer}
+.acp-today button.it:hover b,.acp-today button.it:focus-visible b{color:var(--acp-in)}
+.acp-today small{font-size:11px;color:var(--acp-muted);white-space:nowrap}
+.acp-today b{font-size:17px;font-weight:700;line-height:1.2;font-variant-numeric:tabular-nums;white-space:nowrap}
+.acp-today b em{font-style:normal;font-size:12px;font-weight:500;color:var(--acp-muted)}
+.acp-today .est{font-style:normal;font-size:12px;color:var(--acp-muted);margin-left:1px}
+.acp-today .d{font-size:11px;color:var(--acp-muted);white-space:nowrap}
+.acp-today .d.bad{color:var(--acp-err,#e5484d)}
+.acp-today .dots{display:flex;gap:3px;margin-top:3px;min-height:7px}
+.acp-today .dots i{width:7px;height:7px;border-radius:50%}
+.acp-today .empty{align-self:center;font-size:12px;color:var(--acp-muted);padding:2px 10px}
+.acp.compact .acp-today b{font-size:14px}
+.acp.compact .acp-today .it{padding:1px 10px}
+@container (max-width:560px){.acp-today .it.x{display:none}.acp-today .it{padding:2px 10px}}
 .acp-alert{border:1px solid color-mix(in srgb,var(--acp-err) 45%,transparent);background:color-mix(in srgb,var(--acp-err) 6%,var(--acp-card));color:var(--acp-err);border-radius:10px;padding:8px 12px;margin-bottom:10px}
 .acp-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px}
 .acp-kpi{position:relative;display:flex;flex-direction:column;gap:1px;padding:10px 12px 8px 14px;border-radius:12px;border:1px solid var(--acp-b2);background:var(--acp-card);box-shadow:var(--acp-shadow);overflow:hidden;min-width:0}
@@ -2454,6 +2471,36 @@ window.__ModuleLoader__.load({
       const star = (r) => (r.estimated ? '*' : '')
       // Host capability echoes: an old host ignores from/to, filter and compare.
       const filterOn = Object.keys(filter).length > 0
+      // Header strip: today from local midnight whatever the range, following the cross-filter.
+      const tdy = data?.today
+      const todayStrip = () => {
+        if (!tdy || lockSession) return null
+        const goToday = () => { setCustomOn(false); setRange('today') }
+        if (!tdy.turns) return h('div', { className: 'acp-today' }, h('span', { className: 'empty' }, filterOn ? '今日暂无调用（已筛选）' : '今日暂无调用'))
+        const done = tdy.ok + tdy.failed
+        const rate = done > 0 ? pctN(tdy.ok, done) : null
+        const used = tdy.providers ?? []
+        const hint = '\n点击把下方范围切到「今日」'
+        return h('div', { className: 'acp-today', role: 'group', 'aria-label': '今日摘要' },
+          h('button', {
+            type: 'button', className: 'it', onClick: goToday,
+            title: `今日输入 ${n0(tdy.inputTokens)} · 输出 ${n0(tdy.outputTokens)}${tdy.cacheReadTokens ? ` · 缓存读 ${n0(tdy.cacheReadTokens)}` : ''}${tdy.estimated ? `\n其中 ${tdy.estimated} 轮未上报 Token，按字符数估算（*）` : ''}${hint}`,
+          },
+            h('small', null, filterOn ? '今日 Token · 已筛选' : '今日 Token'),
+            h('b', null, compact(tdy.inputTokens + tdy.outputTokens), tdy.estimated ? h('i', { className: 'est' }, '*') : null),
+            h('span', { className: 'd' }, `入 ${compact(tdy.inputTokens)} / 出 ${compact(tdy.outputTokens)}`)),
+          h('button', {
+            type: 'button', className: 'it', onClick: goToday,
+            title: `成功 ${tdy.ok} · 失败 ${tdy.failed} · 中断 ${tdy.aborted}（中断不计入成功率）${hint}`,
+          },
+            h('small', null, '今日轮次'),
+            h('b', null, n0(tdy.turns)),
+            h('span', { className: `d${tdy.failed ? ' bad' : ''}` }, rate === null ? `中断 ${tdy.aborted}` : `成功 ${rate}%${tdy.failed ? ` · 失败 ${tdy.failed}` : ''}`)),
+          h('div', { className: 'it x', title: used.length ? used.map((p) => `${nameOf(p.id)}：${p.turns} 轮`).join('\n') : '' },
+            h('small', null, '今日活跃 CLI'),
+            h('b', null, used.length, h('em', null, ` / ${providers.length}`)),
+            h('span', { className: 'dots' }, ...used.slice(0, 8).map((p) => h('i', { key: p.id, style: { background: colorOf(p.id) } })))))
+      }
       const compareOn = compare && (customValid || range !== '0')
       const hostFilterOk = !filterOn || !!data?.filter
       const hostCustomOk = !customValid || data?.from !== undefined
@@ -2511,6 +2558,7 @@ window.__ModuleLoader__.load({
               h('div', { className: 'acp-h1' }, mode === 'page' ? 'ACP 控制台' : lockSession ? `本会话 · ${sessText(lockSession)}` : 'ACP 控制台'),
               h('div', { className: 'acp-hsub' }, lockSession ? '所有卡片已锁定到这个会话' : data ? `${providers.length} 个 CLI · ${modelsAll} 个模型 · ${loading ? '刷新中…' : data.pending ? '部分信息后台读取中…' : `更新于 ${fmtTime(data.generatedAt).slice(6)}`}` : '正在读取…')),
             h('span', { className: 'acp-sp' }),
+            todayStrip(),
             inflight.length ? h('span', { className: 'acp-live' }, h('i'), `进行中 ${inflight.length} 轮`) : null),
           h('div', { className: 'acp-ctl' },
             h('div', { className: 'acp-seg', role: 'tablist', 'aria-label': '时间范围' },

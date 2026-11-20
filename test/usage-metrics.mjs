@@ -1,7 +1,7 @@
 // Offline tests for the console's new usage metrics (lib/usage.js): per-model 5-minute TPS series,
 // duration buckets, project ranking, session depth and time to first output.
 import assert from 'node:assert/strict'
-import { aggregate, tpsSeries, TPS_STEP_MS } from '../lib/usage.js'
+import { aggregate, todaySummary, tpsSeries, TPS_STEP_MS } from '../lib/usage.js'
 
 const tests = []
 const t = (name, fn) => tests.push([name, fn])
@@ -97,6 +97,44 @@ t('aggregate: ttft quantiles over turns that recorded it', () => {
   assert.equal(a.ttft.count, 2)
   assert.ok(a.ttft.p50 >= 1000 && a.ttft.p90 === 3000)
   assert.equal(aggregate([], { now }).ttft.count, 0)
+})
+
+// todaySummary works in local time (midnight = the console's「今日」), so build local instants.
+const noon = new Date(2026, 10, 20, 12, 0, 0).getTime()
+const local = (h, m = 0, day = 20) => new Date(2026, 10, day, h, m, 0).getTime()
+
+t('todaySummary: counts from local midnight to now only', () => {
+  const s = todaySummary([
+    rec({ at: local(23, 59, 19) }), // yesterday
+    rec({ at: local(0, 0) }), // exactly midnight: today
+    rec({ at: local(11, 30), provider: 'qoder', inputTokens: 500, outputTokens: 50 }),
+    rec({ at: local(13, 0) }), // after now
+  ], { now: noon })
+  assert.equal(s.since, local(0, 0))
+  assert.equal(s.turns, 2)
+  assert.equal(s.inputTokens, 1500)
+  assert.equal(s.outputTokens, 150)
+  assert.equal(s.lastAt, local(11, 30))
+})
+
+t('todaySummary: failed vs aborted, providers by turns', () => {
+  const s = todaySummary([
+    rec({ at: local(9) }), rec({ at: local(10), ok: false, code: 'SERVER' }),
+    rec({ at: local(10, 5), ok: false, aborted: true }), rec({ at: local(10, 6), ok: false, code: 'DISPOSED' }),
+    rec({ at: local(11), provider: 'qoder' }),
+  ], { now: noon })
+  assert.equal(s.turns, 5)
+  assert.equal(s.ok, 2)
+  assert.equal(s.failed, 1)
+  assert.equal(s.aborted, 2)
+  assert.deepEqual(s.providers, [{ id: 'kiro', turns: 4 }, { id: 'qoder', turns: 1 }])
+})
+
+t('todaySummary: empty day', () => {
+  const s = todaySummary([rec({ at: local(8, 0, 19) })], { now: noon })
+  assert.equal(s.turns, 0)
+  assert.equal(s.lastAt, 0)
+  assert.deepEqual(s.providers, [])
 })
 
 let failed = 0
