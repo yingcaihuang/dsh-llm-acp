@@ -81,6 +81,8 @@ function make(command, models, extra = {}, env = {}) {
 // C-1 unit: detection and parsing (upstream behaviour kept).
 ok(isCodebuddyCommand('/x/codebuddy') && isCodebuddyCommand('cbc') && !isCodebuddyCommand('/x/codebuddy-code'), 'C-1 codebuddy / cbc detected, codebuddy-code is not')
 ok(isKiroCommand('/x/kiro-cli') && !isKiroCommand('/x/kiro'), 'C-1 kiro-cli detected, the IDE launcher kiro is not')
+ok(isCodebuddyCommand('C:\\Program Files\\nodejs\\node.exe', ['C:\\npm\\node_modules\\@tencent-ai\\codebuddy-code\\bin\\codebuddy', '--acp'])
+  && isKiroCommand('C:\\bin\\kiro-cli.exe') && !isCodebuddyCommand('C:\\Program Files\\nodejs\\node.exe', ['--acp']), 'C-1 Windows: node.exe <script> and .exe detected by CLI name')
 {
   const m = parseCredits('\x1b[1mModels\x1b[0m\n* gpt-5.6-sol   4.40x credits  OpenAI\n  a  0.05x credits\nnoise')
   ok(m.get('gpt-5.6-sol') === '4.40' && m.get('a') === '0.05' && m.size === 2, 'C-1 parseCredits: ANSI stripped, default marker ignored, noise skipped', [...m])

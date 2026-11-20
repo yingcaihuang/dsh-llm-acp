@@ -950,7 +950,7 @@ window.__ModuleLoader__.load({
         return n * mul
       }
       if (!PROVIDER_ID_RE.test(f.id.trim())) errors.id = '字母或数字开头，可含 . _ -'
-      if (!f.command.trim().startsWith('/')) errors.command = '写可执行文件的绝对路径（以 / 开头）'
+      if (!/^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(f.command.trim())) errors.command = '写可执行文件的绝对路径（/… 或 C:\\…）'
       const env = {}
       f.env.forEach(([k, v], i) => {
         const key = k.trim()
@@ -1257,8 +1257,8 @@ window.__ModuleLoader__.load({
             null),
           h('div', { className: 'acp-chips' },
             on ? h(Chip, { kind: 'ok' }, `已接入 · ${c.configuredAs}`) : h(Chip, { kind: 'brand' }, '可添加'),
-            h(Chip, { mono: true }, `${c.bin} ${c.spec.args.join(' ')}`.trim()),
-            c.interpreter ? h(Chip, { title: '添加时已自动补 env.PATH' }, `${c.interpreter} 脚本`) : h(Chip, null, '原生程序'),
+            h(Chip, { mono: true }, `${c.bin} ${(c.spec.command && c.spec.command !== c.path ? c.spec.args.slice(1) : c.spec.args).join(' ')}`.trim()),
+            c.interpreter ? h(Chip, { title: c.spec.command && c.spec.command !== c.path ? `通过 ${c.spec.command} 启动 ${c.spec.args[0]}` : '添加时已自动补 env.PATH' }, `${c.interpreter} 脚本`) : h(Chip, null, '原生程序'),
             c.verified ? null : h(Chip, { kind: 'warn', title: '这个配方没在真机验证过，添加前先检测' }, '未验证')),
           c.note ? h('div', { className: 'note' }, c.note) : null,
           c.warning ? h('div', { className: 'note', style: { color: 'var(--acp-warn)' } }, c.warning) : null,

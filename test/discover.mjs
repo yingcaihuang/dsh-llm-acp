@@ -1,15 +1,18 @@
 // Offline tests for lib/discover.js — fake executables in a temp dir and a fake ACP agent;
 // no real CLI, no network, no tokens.
 import assert from 'node:assert/strict'
-import { chmodSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import {
-  RECIPES, addProvider, freeId, interpreterOf, probe, recommendModelVia, removeProvider, sanitizeSpec, scan, suggestSpec,
+  RECIPES, addProvider, duplicateOf, freeId, interpreterOf, isExec, npmShimTarget, probe, recommendModelVia, removeProvider, sanitizeSpec, scan, suggestSpec, win32Launch,
 } from '../lib/discover.js'
+import { cliNameOf, launchPrefix } from '../lib/config.js'
 
 const tests = []
 const t = (name, fn) => tests.push([name, fn])
+// Tests that rely on POSIX execute bits and #!/bin/sh fake CLIs cannot hold on Windows.
+const posix = (name, fn) => (process.platform === 'win32' ? tests.push([`${name} (skipped on Windows)`, () => {}]) : t(name, fn))
 
 const root = mkdtempSync(join(tmpdir(), 'llm-acp-discover-'))
 const bin = join(root, 'bin')
@@ -67,15 +70,117 @@ t('freeId avoids taken ids', () => {
 
 t('suggestSpec: node script gets PATH, recipe env kept, allow by default', () => {
   const r = RECIPES.find((x) => x.bin === 'codebuddy')
-  const s = suggestSpec(r, { path: '/x/codebuddy', dir: '/x', interpreter: 'node', interpreterDir: '/n' })
+  const s = suggestSpec(r, { path: '/x/codebuddy', dir: '/x', interpreter: 'node', interpreterDir: '/n' }, 'linux')
   assert.equal(s.env.CODEBUDDY_INTERNET_ENVIRONMENT, 'internal')
   assert.equal(s.env.PATH.split(':')[0], '/n')
   assert.ok(s.env.PATH.includes('/usr/bin'))
   assert.equal(s.permission, 'allow')
   assert.deepEqual(s.args, ['--acp'])
-  const k = suggestSpec(RECIPES.find((x) => x.bin === 'kiro-cli'), { path: '/x/kiro-cli', dir: '/x' })
+  const k = suggestSpec(RECIPES.find((x) => x.bin === 'kiro-cli'), { path: '/x/kiro-cli', dir: '/x' }, 'linux')
   assert.equal(k.modelVia, 'configOption')
   assert.equal(k.env, undefined)
+})
+
+t('suggestSpec win32: npm CLI runs as node.exe <script>, no PATH added', () => {
+  const r = RECIPES.find((x) => x.bin === 'codebuddy')
+  const s = suggestSpec(r, { path: 'C:\\npm\\codebuddy.cmd', dir: 'C:\\npm', interpreter: 'node', interpreterDir: 'C:\\node', command: 'C:\\node\\node.exe', script: 'C:\\npm\\node_modules\\cb\\bin\\codebuddy' }, 'win32')
+  assert.equal(s.command, 'C:\\node\\node.exe')
+  assert.deepEqual(s.args, ['C:\\npm\\node_modules\\cb\\bin\\codebuddy', '--acp'])
+  assert.deepEqual(s.env, { CODEBUDDY_INTERNET_ENVIRONMENT: 'internal' })
+})
+
+t('win32: npm shims resolve to node.exe + script; missing node.exe ⇒ Windows warning', () => {
+  const npm = join(root, 'npm')
+  const pkgBin = join(npm, 'node_modules', '@x', 'cb', 'bin')
+  mkdirSync(pkgBin, { recursive: true })
+  writeFileSync(join(pkgBin, 'codebuddy'), '#!/usr/bin/env node\nconsole.log("1.2.3")\n')
+  writeFileSync(join(npm, 'codebuddy.cmd'), '@ECHO off\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\@x\\cb\\bin\\codebuddy" %*\r\n')
+  writeFileSync(join(npm, 'codebuddy'), '#!/bin/sh\nexec node  "$basedir/node_modules/@x/cb/bin/codebuddy" "$@"\n')
+  writeFileSync(join(npm, 'tool.cmd'), '@echo off\r\nsomething.exe %*\r\n')
+  const script = join(pkgBin, 'codebuddy')
+  assert.equal(npmShimTarget(join(npm, 'codebuddy.cmd')), script)
+  assert.equal(npmShimTarget(join(npm, 'codebuddy')), script)
+  assert.equal(npmShimTarget(join(npm, 'tool.cmd')), undefined)
+  const noNode = win32Launch(npm, 'codebuddy', [])
+  assert.equal(noNode.script, script)
+  assert.equal(noNode.interpreter, 'node')
+  assert.equal(noNode.command, undefined)
+  const nodeDir = join(root, 'winnode')
+  mkdirSync(nodeDir)
+  writeFileSync(join(nodeDir, 'node.exe'), '')
+  const ok = win32Launch(npm, 'codebuddy', [nodeDir])
+  assert.equal(ok.command, join(nodeDir, 'node.exe'))
+  assert.equal(ok.interpreterDir, nodeDir)
+  assert.equal(win32Launch(npm, 'tool').unsupported, true)
+  assert.equal(win32Launch(npm, 'absent'), undefined)
+  assert.equal(isExec(join(npm, 'codebuddy.cmd'), 'win32'), false)
+  assert.equal(isExec(join(nodeDir, 'node.exe'), 'win32'), true)
+})
+
+t('win32 scan: shim found, configured node.exe provider matched by script name', async () => {
+  const npm = join(root, 'npm')
+  const nodeDir = join(root, 'winnode')
+  const script = join(npm, 'node_modules', '@x', 'cb', 'bin', 'codebuddy')
+  const providers = new Map([['cb', { id: 'cb', command: join(nodeDir, 'node.exe'), args: [script, '--acp'] }]])
+  const r = await scan({ providers, env: { Path: `${npm};${nodeDir}` }, home: root, loginPath: [], commonDirs: [], versions: false, platform: 'win32' })
+  const c = r.candidates.find((x) => x.bin === 'codebuddy')
+  assert.ok(c, 'codebuddy found through its .cmd shim')
+  assert.equal(c.configuredAs, 'cb')
+  assert.equal(c.warning, undefined)
+  assert.equal(c.spec.command, join(nodeDir, 'node.exe'))
+  assert.deepEqual(c.spec.args, [script, '--acp'])
+  const bare = await scan({ env: { Path: npm }, home: root, loginPath: [], commonDirs: [], versions: false, platform: 'win32' })
+  assert.match(bare.candidates.find((x) => x.bin === 'codebuddy').warning, /node\.exe/)
+})
+
+t('addProvider refuses a second provider for the same local CLI', () => {
+  const node = 'C:\\Program Files\\nodejs\\node.exe'
+  const script = 'C:\\npm\\node_modules\\@tencent-ai\\codebuddy-code\\bin\\codebuddy'
+  const cur = { providers: {
+    codebuddy: { command: node, args: [script, '--acp'], permission: 'reject' },
+    'codebuddy-code': { command: node, args: [script, '--acp'], env: { CODEBUDDY_INTERNET_ENVIRONMENT: 'external' } },
+  } }
+  // Same program + argv + env, other id, different case/slashes, extra PATH and other options ⇒ refused.
+  assert.throws(() => addProvider(cur, 'codebuddy-2', { command: node.toLowerCase(), args: [script.replace(/\\/g, '/'), '--acp'], env: { PATH: 'C:\\x' }, permission: 'allow' }, { platform: 'win32' }), /已经接入为 provider "codebuddy"/)
+  assert.throws(() => addProvider(cur, 'cb-intl', { command: node, args: [script, '--acp'], env: { CODEBUDDY_INTERNET_ENVIRONMENT: 'external' } }, { platform: 'win32' }), /"codebuddy-code"/)
+  // Editing the provider itself is no duplicate.
+  assert.equal(addProvider(cur, 'codebuddy', { command: node, args: [script, '--acp'], permission: 'allow' }, { overwrite: true, platform: 'win32' }).providers.codebuddy.permission, 'allow')
+  // Another env (another account/site) is another CLI setup.
+  assert.ok(addProvider(cur, 'cb-test', { command: node, args: [script, '--acp'], env: { CODEBUDDY_INTERNET_ENVIRONMENT: 'test' } }, { platform: 'win32' }).providers['cb-test'])
+  // POSIX paths stay case-sensitive.
+  assert.ok(addProvider({ providers: { a: { command: '/opt/Kiro', args: ['acp'] } } }, 'b', { command: '/opt/kiro', args: ['acp'] }, { platform: 'linux' }).providers.b)
+  assert.equal(duplicateOf({ a: { command: '/x/kiro-cli', args: ['acp'] } }, { command: '/x/kiro-cli', args: ['acp'] }, undefined, 'linux'), 'a')
+})
+
+t('win32 scan: each configured provider matches one candidate, exact launch first', async () => {
+  const npm = join(root, 'npm')
+  const nodeDir = join(root, 'winnode')
+  const script = join(npm, 'node_modules', '@x', 'cb', 'bin', 'codebuddy')
+  writeFileSync(join(npm, 'codebuddy-code.cmd'), readFileSync(join(npm, 'codebuddy.cmd')))
+  const node = join(nodeDir, 'node.exe')
+  // Two providers on one script, distinguished by env, with ids that do not follow the recipes.
+  const providers = new Map([
+    ['cn', { id: 'cn', command: node, args: [script, '--acp'], env: { CODEBUDDY_INTERNET_ENVIRONMENT: 'internal' } }],
+    ['intl', { id: 'intl', command: node, args: [script, '--acp'], env: { CODEBUDDY_INTERNET_ENVIRONMENT: 'external' } }],
+  ])
+  const r = await scan({ providers, env: { Path: `${npm};${nodeDir}` }, home: root, loginPath: [], commonDirs: [], versions: false, platform: 'win32' })
+  const by = Object.fromEntries(r.candidates.map((c) => [c.bin, c]))
+  assert.equal(by.codebuddy.configuredAs, 'cn')
+  assert.equal(by['codebuddy-code'].configuredAs, 'intl')
+  // Only one provider configured ⇒ the other recipe is still addable, not shown as the same provider twice.
+  const one = await scan({ providers: new Map([['cn', providers.get('cn')]]), env: { Path: `${npm};${nodeDir}` }, home: root, loginPath: [], commonDirs: [], versions: false, platform: 'win32' })
+  const ob = Object.fromEntries(one.candidates.map((c) => [c.bin, c]))
+  assert.equal(ob.codebuddy.configuredAs, 'cn')
+  assert.equal(ob['codebuddy-code'].configuredAs, undefined)
+})
+
+t('launchPrefix / cliNameOf: node.exe <script> is the script', () => {
+  const p = { command: 'C:\\Program Files\\nodejs\\node.exe', args: ['C:\\npm\\node_modules\\x\\bin\\kiro-cli', 'acp'] }
+  assert.deepEqual(launchPrefix(p), ['C:\\npm\\node_modules\\x\\bin\\kiro-cli'])
+  assert.equal(cliNameOf(p), 'kiro-cli')
+  assert.equal(cliNameOf({ command: 'C:\\bin\\kiro-cli.exe', args: ['acp'] }), 'kiro-cli')
+  assert.deepEqual(launchPrefix({ command: '/usr/bin/kiro-cli', args: ['acp'] }), [])
+  assert.deepEqual(launchPrefix({ command: '/usr/bin/node', args: ['--inspect'] }), [])
 })
 
 t('suggestSpec: approvals none ⇒ permission allow', () => {
@@ -84,7 +189,7 @@ t('suggestSpec: approvals none ⇒ permission allow', () => {
   assert.equal(s.permission, 'allow')
 })
 
-t('scan finds executables only, marks configured, suggests free ids', async () => {
+posix('scan finds executables only, marks configured, suggests free ids', async () => {
   const providers = new Map([['kiro', { id: 'kiro', command: join(bin, 'kiro-cli') }], ['qoder', { id: 'qoder', command: '/elsewhere/other' }]])
   const r = await scan({ providers, env: { PATH: '' }, home: root, loginPath: [bin, nodeDir], commonDirs: [], versions: false })
   const by = Object.fromEntries(r.candidates.map((c) => [c.bin, c]))
@@ -99,13 +204,13 @@ t('scan finds executables only, marks configured, suggests free ids', async () =
   assert.equal(by.deveco.inDshPath, false)
 })
 
-t('scan: node script without node ⇒ warning', async () => {
+posix('scan: node script without node ⇒ warning', async () => {
   const r = await scan({ env: { PATH: '' }, home: root, loginPath: [bin], commonDirs: [], versions: false })
   const d = r.candidates.find((c) => c.bin === 'deveco')
   assert.match(d.warning, /node/)
 })
 
-t('scan: versions read from --version', async () => {
+posix('scan: versions read from --version', async () => {
   const r = await scan({ env: { PATH: `${nodeDir}:/usr/bin:/bin` }, home: root, loginPath: [bin], commonDirs: [], versions: true })
   assert.equal(r.candidates.find((c) => c.bin === 'qodercli').version, '1.1.90')
 })
@@ -147,7 +252,7 @@ t('recommendModelVia: recipe wins, else probe, else args', () => {
   assert.equal(recommendModelVia(undefined, { ok: false }), 'args')
 })
 
-t('sanitizeSpec: absolute executable only, unknown keys dropped', () => {
+posix('sanitizeSpec: absolute executable only, unknown keys dropped', () => {
   const s = sanitizeSpec({ command: join(bin, 'kiro-cli'), args: ['acp'], modelVia: 'configOption', permission: 'allow', evil: 1, env: {} })
   assert.equal(s.evil, undefined)
   assert.equal(s.env, undefined)
