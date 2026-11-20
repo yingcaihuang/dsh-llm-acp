@@ -49,6 +49,12 @@ window.__ModuleLoader__.load({
     // upgraded ({ from, to }) lives in memory only, so the notice shows once.
     const VER_KEY = 'dsh-llm-acp.version-state'
     const SNOOZE_MS = 24 * 3600_000
+    // pending = { to, from, at }: the user clicked「去升级」towards `to`. Still running an older version
+    // PENDING_GRACE_MS later means the update did not take (failed and rolled back, or DSH not restarted).
+    const PENDING_GRACE_MS = 90_000
+    const PENDING_MAX_MS = 7 * 86400_000
+    // Coming back to the page after this long re-asks the registries instead of the host cache.
+    const VIS_RECHECK_MS = 5 * 60_000
     const readVer = () => {
       try { const v = typeof localStorage !== 'undefined' && JSON.parse(localStorage.getItem(VER_KEY)); return v && typeof v === 'object' ? v : {} } catch { return {} }
     }
@@ -63,6 +69,9 @@ window.__ModuleLoader__.load({
     function initVer() {
       if (verInited) return
       verInited = true
+      // A pending update is done once its version runs here; drop malformed or week-old ones too.
+      const pend = verStore.get().pending
+      if (pend && (typeof pend.to !== 'string' || cmpVer(CLIENT_VERSION, pend.to) >= 0 || !(Date.now() - Number(pend.at) < PENDING_MAX_MS))) saveVer({ pending: null })
       const st = verStore.get()
       if (st.seen === CLIENT_VERSION) return
       const from = typeof st.seen === 'string' ? st.seen : ''
@@ -84,7 +93,9 @@ window.__ModuleLoader__.load({
       const [panel, setPanel] = useState('') // '' | 'notes' | 'help'
       useStore(verStore)
       const st = verStore.get()
+      const lastCheck = useRef(0)
       const check = useCallback(async (force) => {
+        lastCheck.current = Date.now()
         setChecking(true)
         try { setInfo(await getJson(`${R.latest}${force ? '?force=1' : ''}`)) }
         catch (e) { setInfo({ latest: null, error: String(e?.message ?? e) }) }
@@ -94,9 +105,13 @@ window.__ModuleLoader__.load({
       // npm already has a newer version that a mirror DSH may install from has not synced yet.
       const syncing = !!info?.newest && cmpVer(info.newest, latest ?? CLIENT_VERSION) > 0 && cmpVer(info.newest, CLIENT_VERSION) > 0
       useEffect(() => { initVer(); check(false) }, [check])
+      // Poll only while the page is visible; coming back after a while re-checks at once.
       useEffect(() => {
-        const t = setInterval(() => check(false), syncing ? LAG_POLL_MS : LATEST_POLL_MS)
-        return () => clearInterval(t)
+        const hidden = () => typeof document !== 'undefined' && !!document.hidden
+        const t = setInterval(() => { if (!hidden()) check(false) }, syncing ? LAG_POLL_MS : LATEST_POLL_MS)
+        const onVis = () => { if (!hidden() && Date.now() - lastCheck.current > VIS_RECHECK_MS) check(true) }
+        try { document.addEventListener('visibilitychange', onVis) } catch { /* no document */ }
+        return () => { clearInterval(t); try { document.removeEventListener('visibilitychange', onVis) } catch { /* no document */ } }
       }, [check, syncing])
       // Compared with what this page runs: a stale host half (not restarted) is the other alert's job.
       const newer = !!latest && cmpVer(latest, CLIENT_VERSION) > 0
@@ -107,11 +122,28 @@ window.__ModuleLoader__.load({
       const lagHosts = (info?.lagging ?? []).join('、') || '镜像'
       const syncTitle = syncing ? `v${info.newest} 已发布到 npm，但 ${lagHosts} 还没同步完。DSH 可能从镜像安装，现在更新会失败。\n通常几分钟内同步完成，同步好后这里会自动出现升级提醒。` : ''
       const toggle = (p) => setPanel(panel === p ? '' : p)
-      const onUpgrade = () => { if (dev || !openUpdate()) toggle('help') }
+      const onUpgrade = () => {
+        if (dev) { toggle('help'); return }
+        // Remember the target: if this page still runs an older version later, explain why.
+        if (openUpdate()) saveVer({ pending: { to: latest ?? st.pending?.to, from: CLIENT_VERSION, at: Date.now() } })
+        else toggle('help')
+      }
       const later = () => { saveVer({ snooze: { v: latest, until: Date.now() + SNOOZE_MS } }); setPanel('') }
       const skip = () => { saveVer({ skip: latest }); setPanel('') }
       const quietTitle = quiet ? `${st.skip === latest ? `已跳过 v${latest}，出下一个版本时再提醒` : `已设为稍后提醒，${fmtTime(st.snooze.until)} 后再提醒`}\n点击去升级` : ''
       const up = st.upgraded && st.upgraded.to === CLIENT_VERSION ? st.upgraded : null
+      // An update the user started that has not taken effect: shown once the grace period is over.
+      const pendAll = st.pending && typeof st.pending.to === 'string' && cmpVer(st.pending.to, CLIENT_VERSION) > 0 ? st.pending : null
+      const pendLeft = pendAll ? PENDING_GRACE_MS - (Date.now() - Number(pendAll.at)) : 0
+      const pend = pendAll && pendLeft <= 0 ? pendAll : null
+      const [, tick] = useState(0)
+      useEffect(() => {
+        if (!(pendLeft > 0)) return undefined
+        const t = setTimeout(() => tick((x) => x + 1), pendLeft + 50)
+        return () => clearTimeout(t)
+      }, [pendAll ? pendAll.at : 0])
+      const hostHas = !!pend && !!info?.current && cmpVer(info.current, pend.to) >= 0
+      const mirrorBehind = !!pend && !!latest && cmpVer(latest, pend.to) < 0
       return h('span', { className: `acp-ver-wrap${small ? ' small' : ''}` },
         h('button', { type: 'button', className: 'acp-ver', title: verTitle, disabled: checking, onClick: () => check(true) },
           `v${CLIENT_VERSION}`, checking ? h('i', { className: 'spin', 'aria-hidden': true }) : null),
@@ -145,6 +177,17 @@ window.__ModuleLoader__.load({
             ? '当前是 link: 本地开发安装，插件页不会出现更新按钮。在插件目录执行 git pull，再到插件页把开关关掉再打开（或 ⌘Q 重启 DSH）。'
             : `请到 设置 → 插件 → 已安装 → ACP CLI 模型，点右上角「更新到 ${latest}」。更新后按 ⌘Q 完全退出 DSH 再打开，并在本页 ⌘⇧R 强制刷新。`,
           h('button', { type: 'button', className: 'acp-link', onClick: () => setPanel('') }, '知道了')) : null,
+        pend ? h('div', { className: 'acp-upd-fail', role: 'status' },
+          h('div', { className: 'ttl' }, `上次更新到 v${pend.to} 好像没有生效，当前仍是 v${CLIENT_VERSION}`),
+          h('ul', { className: 'acp-notes' },
+            hostHas
+              ? h('li', null, `服务端已经是 v${info.current}，说明已经装好，只是页面还在用旧代码：按 ⌘Q 完全退出 DSH 再打开，再在本页 ⌘⇧R 强制刷新。`)
+              : h(Fragment, null,
+                mirrorBehind ? h('li', null, `镜像（${lagHosts}）还没同步 v${pend.to}。插件管理器从镜像安装时会失败并自动装回旧版本，等「镜像同步中」消失后再更新。`) : null,
+                h('li', null, '插件页如果显示「更新失败，已恢复到 …」，展开「查看安装输出」看具体报错：ERR_PNPM_NO_MATCHING_VERSION 是镜像还没同步，minimumReleaseAge 相关的是刚发布的版本被拦住了。'),
+                h('li', null, '插件页如果显示更新成功，是 DSH 没有完全重启：按 ⌘Q 退出再打开（只关窗口不算）。'))),
+          h('button', { type: 'button', className: 'acp-link', onClick: onUpgrade }, '重新更新'),
+          h('button', { type: 'button', className: 'acp-link', onClick: () => saveVer({ pending: null }) }, '不再提示')) : null,
         up ? h('div', { className: 'acp-upgraded', role: 'status' },
           h('div', { className: 'ttl' }, `🎉 已升级到 v${up.to}${up.from ? `（原 v${up.from}）` : ''}`),
           info && info.current === CLIENT_VERSION ? h(NotesList, { notes: info.currentNotes }) : null,
@@ -629,6 +672,10 @@ window.__ModuleLoader__.load({
 .acp-upd-quiet{font:inherit;font-size:11px;font-weight:600;padding:2px 9px;border-radius:999px;cursor:pointer;color:var(--acp-in);background:color-mix(in srgb,var(--acp-in) 8%,var(--acp-card));border:1px solid color-mix(in srgb,var(--acp-in) 35%,transparent)}
 .acp-upd-sync{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:2px 9px;border-radius:999px;color:var(--acp-muted);border:1px dashed var(--acp-b2);background:var(--acp-card);cursor:help}
 .acp-upd-sync .spin{width:9px;height:9px;border-radius:50%;border:1.5px solid currentColor;border-top-color:transparent;animation:acp-upd-spin 1.2s linear infinite}
+.acp-upd-fail{flex-basis:100%;font-size:11.5px;line-height:1.5;padding:7px 10px;border-radius:8px;border:1px solid color-mix(in srgb,var(--acp-warn) 45%,transparent);background:color-mix(in srgb,var(--acp-warn) 7%,var(--acp-card))}
+.acp-upd-fail .ttl{font-weight:700;margin-bottom:3px;color:var(--acp-warn)}
+.acp-upd-fail .acp-link{margin-right:10px}
+@media (prefers-reduced-motion:reduce){.acp-upd .ring{display:none}.acp-upd{box-shadow:none}}
 .acp-notes{margin:2px 0 4px;padding-left:18px}
 .acp-notes li{margin:1px 0}
 .acp-notes.none{padding-left:0;color:var(--acp-muted)}
@@ -2791,7 +2838,10 @@ window.__ModuleLoader__.load({
           h('label', { title: '输入框的模型选择列表里，每个渠道用不同颜色区分，渠道名放大加粗（对所有渠道生效，不只 ACP）' },
             h('input', { type: 'checkbox', checked: !!entries.pickerColor, onChange: () => savePrefs({ entries: { ...entries, pickerColor: !entries.pickerColor } }) }), '模型列表按渠道着色')) : null,
         verStale ? h('div', { className: 'acp-alert', role: 'status', style: { borderColor: 'color-mix(in srgb,var(--acp-warn) 45%,transparent)', background: 'color-mix(in srgb,var(--acp-warn) 6%,var(--acp-card))', color: 'var(--acp-warn)' } },
-          `插件页面是 v${CLIENT_VERSION}，服务端仍在运行 v${data.version}，两边不一致，新功能可能不显示。请按 ⌘Q 完全退出 DSH 再打开（只关窗口不算），然后在本页按 ⌘⇧R 强制刷新。`) : null,
+          cmpVer(data.version, CLIENT_VERSION) > 0
+            ? `服务端已经是 v${data.version}，页面还在用旧代码 v${CLIENT_VERSION}（浏览器缓存）。点「刷新页面」即可；还不行再按 ⌘Q 完全退出 DSH 重新打开。`
+            : `插件页面是 v${CLIENT_VERSION}，服务端仍在运行 v${data.version}，两边不一致，新功能可能不显示。请按 ⌘Q 完全退出 DSH 再打开（只关窗口不算），然后点「刷新页面」。`,
+          h('button', { type: 'button', className: 'acp-btn', style: { marginLeft: 8, padding: '1px 10px', fontSize: 11 }, onClick: () => { try { window.location.reload() } catch { /* not in a browser */ } } }, '刷新页面')) : null,
         lockSession && data && !data.usage?.count ? h('div', { className: 'acp-alert', role: 'status', style: { borderColor: 'color-mix(in srgb,var(--acp-in) 40%,transparent)', background: 'color-mix(in srgb,var(--acp-in) 6%,var(--acp-card))', color: 'inherit' } },
           '本会话还没有走过 ACP。只有选用 ACP 渠道的模型（模型选择器里「外部 CLI」分组，写作 provider/model）时，这一轮才会记入 ACP 统计；用其他渠道的模型聊天不会出现在这里。') : null,
         hostStale ? h('div', { className: 'acp-alert', style: { borderColor: 'color-mix(in srgb,var(--acp-warn) 45%,transparent)', background: 'color-mix(in srgb,var(--acp-warn) 6%,var(--acp-card))', color: 'var(--acp-warn)' } },

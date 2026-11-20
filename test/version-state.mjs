@@ -81,6 +81,29 @@ t('quietFor: skip holds for that version only; snooze expires', () => {
   assert.equal(p.quietFor({}, '0.3.0'), false)
 })
 
+t('pending update: cleared once its version runs here', () => {
+  const { p, mem } = load({ 'dsh-llm-acp.version-state': JSON.stringify({ seen: '0.0.1', pending: { to: CV, from: '0.0.1', at: Date.now() - 1000 } }) })
+  p.initVer()
+  assert.equal(p.verStore.get().pending, null)
+  assert.equal(JSON.parse(mem[p.VER_KEY]).pending, null)
+  assert.deepEqual(p.verStore.get().upgraded, { from: '0.0.1', to: CV }, 'the upgraded notice still shows')
+})
+
+t('pending update to a newer version than runs: kept for the failure hint', () => {
+  const { p } = load({ 'dsh-llm-acp.version-state': JSON.stringify({ seen: CV, pending: { to: '99.0.0', from: CV, at: Date.now() - 1000 } }) })
+  p.initVer()
+  assert.equal(p.verStore.get().pending?.to, '99.0.0')
+})
+
+t('pending older than 7 days or malformed: dropped', () => {
+  const old = load({ 'dsh-llm-acp.version-state': JSON.stringify({ seen: CV, pending: { to: '99.0.0', from: CV, at: Date.now() - 8 * 86400_000 } }) })
+  old.p.initVer()
+  assert.equal(old.p.verStore.get().pending, null)
+  const bad = load({ 'dsh-llm-acp.version-state': JSON.stringify({ seen: CV, pending: { to: 7 } }) })
+  bad.p.initVer()
+  assert.equal(bad.p.verStore.get().pending, null)
+})
+
 let failed = 0
 for (const [name, fn] of tests) {
   try { await fn(); console.log(`ok   ${name}`) } catch (e) { failed++; console.log(`FAIL ${name}\n     ${e?.stack?.split('\n').slice(0, 3).join(' | ')}`) }
