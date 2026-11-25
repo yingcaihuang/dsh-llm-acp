@@ -17,6 +17,7 @@ import { fromHostLogger } from './lib/log.js'
 import { createPrefs } from './lib/prefs.js'
 import { createUsageLog } from './lib/usage.js'
 import { registerDashboardRoutes } from './lib/dashboard-host.js'
+import { createRanker, intervalOf } from './lib/rank.js'
 
 const withTimeout = (p, ms) => {
   let t
@@ -28,6 +29,8 @@ export const inject = ['llm']
 
 export function apply(ctx, rawConfig) {
   const providers = resolveProviders(rawConfig ?? {}) // throws on bad config: fail loudly at load
+  // 模型性价比排行: collect every N ms (default 5 min, 0 = only on 「立即重新采集」).
+  const rankIntervalMs = intervalOf(rawConfig ?? {})
   // No provider yet: register no model routes, but keep the console up so its "扫描本机 ACP CLI"
   // card can add the first provider without hand-written YAML.
   if (providers.size === 0) ctx.logger?.warn?.('llm-acp: no provider configured under `providers`; console only (scan to add one)')
@@ -113,7 +116,11 @@ export function apply(ctx, rawConfig) {
   })
 
   const release = providers.size > 0 ? ctx.llm.registerAdapter([...providers.keys()], adapter) : () => {}
+  // Model price ranking (lib/rank.js): reuses the adapter's discovery; history in rank.json.
+  const ranker = createRanker({ adapter, providers: () => providers, prefs, usage, file: sideFile('rankFile', 'rank.json'), log, intervalMs: rankIntervalMs })
+  if (providers.size > 0) ranker.start()
   ctx.effect(() => () => {
+    try { ranker.stop() } catch {}
     try { release() } catch {}
     return adapter.dispose()
   }, 'llm-acp.dispose()')
@@ -126,6 +133,6 @@ export function apply(ctx, rawConfig) {
     if (typeof editor?.edit !== 'function' || entry === undefined) throw new Error('当前 profile 不支持在界面里保存配置（没有 configEditor），请改 cordis.patch.yml')
     await editor.edit(entry, (current) => change(current))
   }
-  registerDashboardRoutes(ctx, { adapter, providers, prefs, usage, stateFile, saveConfig, rawProviders, notifyModels })
+  registerDashboardRoutes(ctx, { adapter, providers, prefs, usage, stateFile, saveConfig, rawProviders, notifyModels, ranker })
   ctx.logger?.info?.(`llm-acp: registered ${[...providers.keys()].join(', ') || '(no provider)'}`)
 }
